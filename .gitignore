@@ -1,0 +1,14 @@
+bin/
+obj/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.dotnet-home/
+.nuget-cache/
+.nuget-packages/
+.pnpm-store/
+*.user
+*.suo
+coverage/
