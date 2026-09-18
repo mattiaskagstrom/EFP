@@ -1,0 +1,5 @@
+packages:
+  - src/Admin
+
+allowBuilds:
+  esbuild: true

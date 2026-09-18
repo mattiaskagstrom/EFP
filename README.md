@@ -35,8 +35,20 @@ API:et finns på `http://localhost:8080` när det körs i container och OpenAPI 
 Förutsätter Node.js och pnpm:
 
 ```powershell
-pnpm install --dir src/Admin
+pnpm install
 pnpm --dir src/Admin dev
 ```
 
 Adminvyn använder OpenStreetMap och kan skapa sökinsatser, rita zoner samt exportera zoner som GeoJSON.
+
+### Starta hela utvecklingsmiljön
+
+Använd det samlade PowerShell-skriptet:
+
+```powershell
+.\scripts\dev.ps1
+```
+
+Skriptet kontrollerar Node.js, pnpm/npm, .NET SDK och Docker, kör paketrestore, startar PostgreSQL/PostGIS samt backend och admin-interface. Databasen stoppas när skriptet avslutas men datavolymen sparas. Använd `-KeepDatabase` om databasen ska fortsätta köra efter avslut.
+
+Om npm-registret använder ett företagscertifikat aktiverar skriptet automatiskt Node.js systemcertifikat med `NODE_USE_SYSTEM_CA=1`. Node.js 22.15 eller senare rekommenderas för detta. Pnpm är rekommenderat; om bara npm finns används en isolerad npm-fallback utan dependency-skript.

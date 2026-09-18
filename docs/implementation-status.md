@@ -14,6 +14,10 @@ Följande är implementerat som en körbar MVP-bas:
 - Health endpoint och OpenAPI.
 - React/TypeScript-admin med OpenStreetMap-karta.
 - Skapande av sökinsats och ritning av polygonzoner.
+- Kartverktyg för polygon, fyrkant, cirkel, sträcka och text.
+- Val av färg och linjetyp för nya ritobjekt.
+- Redigering, flytt, borttagning samt Ctrl+Z/Ctrl+Y för ritobjekt.
+- Sparande av senaste polygon/fyrkant som zon.
 
 ## Medvetet kvar till nästa skiva
 
