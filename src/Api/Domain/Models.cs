@@ -31,6 +31,13 @@ public sealed class Zone
     public SearchMethod SearchMethod { get; set; } = SearchMethod.Patrol;
     public int Priority { get; set; }
     public string? AssignedGroup { get; set; }
+    public bool Searched { get; set; }
+    public DateTimeOffset? SearchedAt { get; set; }
+    public int Points { get; set; }
+    public bool ShowName { get; set; }
+    public bool ShowArea { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
     public Polygon Geometry { get; set; } = default!;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

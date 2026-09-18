@@ -68,6 +68,34 @@ Zon-GPX och spår-GPX är två separata importflöden. Importerade spår är imm
 
 Kartändringar hålls lokala tills användaren väljer **Spara ändringar**. **Släng ändringar** återställer lokala zonändringar, inklusive nya, redigerade och borttagna zoner, genom att hämta aktuell version från servern.
 
+## Zonlista och inställningar
+
+Vänsterpanelen innehåller en lista över alla sparade zoner i den valda sökinsatsen. Ett klick på en zon i listan markerar motsvarande zon i kartan. Ett klick på en zon i kartan gör samma sak och expanderar zonens inställningar i vänsterpanelen.
+
+Varje zon har en egen inställningssektion som är hopfälld som standard. Högerklicksmeny används inte för zonmetadata. Den expanderade sektionen ska kunna:
+
+- ändra zonens namn
+- markera zonen som sökt eller inte sökt
+- ange när zonen söktes
+- ange zonens poäng
+- välja om zonens namn ska visas på kartan
+- välja om zonens storlek ska visas på kartan i km²
+- förenkla polygonen med valbar tolerans i meter
+- visa eller dölja zonen i den aktuella kartvyn
+- radera zonen efter en tydlig bekräftelse
+
+Visningsvalen påverkar kartan direkt men sparas tillsammans med övriga zonändringar först när användaren väljer **Spara ändringar**. Spår och andra importer som är immutable ska inte få dessa zoninställningar.
+
+Att dölja en zon är en lokal visningsinställning och påverkar inte serverdata. Radering kräver bekräftelse i gränssnittet och utförs som soft-delete på servern, så att zonen kan återställas eller granskas i framtida administrationsfunktioner.
+
+Polygonförenkling sker lokalt och ska minska antalet hörnpunkter utan att ändra zonens avsedda form mer än toleransen tillåter. Förenklingen ska kunna ångras och den nya geometrin valideras när zonen sparas.
+
+## Splitta zon
+
+Verktyget **Splitta zon** aktiveras separat från övriga ritverktyg. Användaren klickar först på den zon som ska delas; zonens outline markeras då tydligt. Därefter ritas en linje genom zonen från kant till kant. Linjen används för att skapa två lokala delzoner.
+
+Splitten ändrar inte servern direkt. Originalzonen tas bort och delzonerna sparas först när användaren väljer **Spara ändringar**. Om linjen inte delar zonen i två giltiga polygoner ska originalzonen ligga kvar och användaren få en begriplig återkoppling.
+
 Importflödet ska ge återkoppling om lyckad eller misslyckad import. Vid fortsatt utveckling bör listan även visa importtid, antal punkter och eventuella valideringsvarningar.
 
 ## Kartan
@@ -158,7 +186,7 @@ Det aktiva verktyget kan också avaktiveras genom att klicka på samma knapp en 
 
 ### Redigera
 
-Redigeringsläget används för att ändra geometri, till exempel polygonens hörn eller cirkelns radie.
+Redigeringsläget aktiveras först utan att lägga till redigeringshandtag på kartan. Användaren klickar därefter på den zon som ska redigeras; endast den valda zonen får redigeringshandtag. Detta förhindrar prestandaproblem med komplexa GPX-geometrier.
 
 ### Flytta
 
@@ -180,7 +208,7 @@ Knapparna ska vara inaktiverade när motsvarande historik saknas. Historiken gä
 
 ## Spara zon
 
-Att rita en polygon eller fyrkant skapar inte automatiskt en permanent zon i backend. Användaren måste uttryckligen välja **Spara zon**.
+Att rita en polygon eller fyrkant skapar inte automatiskt en permanent zon i backend. Användaren måste uttryckligen välja **Spara ändringar**.
 
 Detta är ett medvetet beslut för att skilja mellan:
 

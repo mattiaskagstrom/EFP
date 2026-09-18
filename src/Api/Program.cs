@@ -16,6 +16,17 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<EfpDbContext>();
     await db.Database.EnsureCreatedAsync();
+    // Tillfällig MVP-schemajustering för utvecklingsdatabaser. Ersätts av EF-migration
+    // innan produktionssättning.
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "Searched" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "SearchedAt" timestamp with time zone NULL;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "Points" integer NOT NULL DEFAULT 0;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "ShowName" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "ShowArea" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+        """);
 }
 app.UseCors();
 app.MapOpenApi();
