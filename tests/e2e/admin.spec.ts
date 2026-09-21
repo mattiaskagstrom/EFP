@@ -11,7 +11,7 @@ test('@critical user can create and open an investigation', async ({ page }) => 
   await page.getByPlaceholder('Namn på ny sökinsats').fill(`E2E ${Date.now()}`);
   await page.getByRole('button', { name: 'Skapa sökinsats' }).click();
   await expect(page.getByRole('button', { name: 'Spara ändringar' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Zoner' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Zoner', exact: true })).toBeVisible();
 });
 
 test('@full zone panel can be collapsed and searched', async ({ page }) => {
