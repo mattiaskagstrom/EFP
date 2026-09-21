@@ -1,10 +1,11 @@
 services:
   db:
     image: postgis/postgis:16-3.4
+    restart: unless-stopped
     environment:
       POSTGRES_DB: efp
       POSTGRES_USER: efp
-      POSTGRES_PASSWORD: efp-dev-password
+      POSTGRES_PASSWORD: ${EFP_DB_PASSWORD:-efp-dev-password}
     ports:
       - "5432:5432"
     volumes:
@@ -19,13 +20,24 @@ services:
     build:
       context: ./src/Api
     environment:
-      ConnectionStrings__Efp: Host=db;Port=5432;Database=efp;Username=efp;Password=efp-dev-password
-      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Efp: "Host=db;Port=5432;Database=efp;Username=efp;Password=${EFP_DB_PASSWORD:-efp-dev-password}"
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
     ports:
       - "8080:8080"
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+
+  admin:
+    build:
+      context: .
+      dockerfile: src/Admin/Dockerfile
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+    depends_on:
+      - api
 
 volumes:
   efp-postgres:

@@ -21,7 +21,7 @@ type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJ
 type ZoneDetails = Pick<Zone, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea'>;
 type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; split: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api/v1';
+const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 const center: [number, number] = [59.33, 18.06];
 const strokeMap: Record<StrokeStyle, string | undefined> = { solid: undefined, dash: '12 8', dot: '2 8', dashdot: '12 6 2 6' };
 

@@ -10,6 +10,7 @@ Krav och planeringsunderlag för en applikation som stödjer patrullsök och ska
 - [Teknisk arkitektur](docs/teknisk-arkitektur.md) – föreslagen teknikstack, drift, skalning och uppdateringar.
 - [Action items](docs/action-items.md) – prioriterad genomförandeplan med definitioner av klart.
 - [MVP och öppna beslut](docs/mvp-och-oppna-beslut.md) – förslag på första version samt frågor som behöver beslutas.
+- [Installation på Proxmox](docs/proxmox-installation.md) – Community Scripts-liknande installation i Debian LXC.
 
 Dokumenten är ett tidigt kravunderlag och ska förfinas tillsammans med användare, insatsledning och tekniskt ansvariga.
 
