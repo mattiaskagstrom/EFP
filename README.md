@@ -14,6 +14,21 @@ Krav och planeringsunderlag för en applikation som stödjer patrullsök och ska
 
 Dokumenten är ett tidigt kravunderlag och ska förfinas tillsammans med användare, insatsledning och tekniskt ansvariga.
 
+## Viktig status- och säkerhetsvarning
+
+Denna applikation är än så länge 100 % vibe-codad med OpenAI Codex. Det innebär att kod, arkitektur, säkerhet, datamodell och verksamhetslogik ännu inte är fullständigt manuellt granskade eller verifierade.
+
+Applikationen ska därför inte användas som enda stöd i skarp insats, eller för att fatta kritiska beslut, innan den har genomgått:
+
+- teknisk kodgranskning
+- säkerhetsgranskning och penetrationstest
+- test av backup, återställning och dataintegritet
+- verifiering av behörigheter och skydd av insatsdata
+- verksamhetsvalidering tillsammans med erfaren insatsledning
+- praktiska tester i kontrollerad miljö
+
+All användning sker tills vidare på eget ansvar. Testdata bör användas och känsliga person- eller insatsuppgifter bör inte läggas in i utvecklings- eller demonstrationsmiljöer.
+
 ## Kodbas
 
 Den första MVP-basen finns under `src/Api` och `src/Admin`.
