@@ -7,7 +7,7 @@ EFP kan installeras med ett Community Scripts-liknande bootstrap-skript som kör
 Kör som `root` i Proxmox Shell:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/mattiaskagstrom/EFP/main/scripts/proxmox/efp-install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/mattiaskagstrom/EFP/refs/heads/master/scripts/proxmox/efp-install.sh)"
 ```
 
 Skriptet frågar efter CT-ID, hostname, nätverksbrygga, lagring samt Git-repository och branch. Standardvärdena kan normalt accepteras med Enter.

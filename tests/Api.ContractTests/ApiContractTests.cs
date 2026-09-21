@@ -85,6 +85,9 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
 
         var valid = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/reference-points", new { type = "Pls", label = "PLS", longitude = 18, latitude = 59 });
         Assert.Equal(HttpStatusCode.Created, valid.StatusCode);
+        var created = await valid.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(18, created.GetProperty("longitude").GetDouble());
+        Assert.Equal(59, created.GetProperty("latitude").GetDouble());
     }
 
     [Fact]
