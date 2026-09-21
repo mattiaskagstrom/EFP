@@ -18,7 +18,8 @@ public static class ImportExportEndpoints
         group.MapPost("/tracks/import", ImportGpxAsync).DisableAntiforgery();
         group.MapPost("/zones/import", ImportZonesGpxAsync).DisableAntiforgery();
         group.MapGet("/zones.geojson", ExportZonesGeoJsonAsync);
-        group.MapGet("/zones.gpx", ExportZonesGpxAsync);
+        group.MapGet("/zones.gpx", ExportZonesGarminGpxAsync);
+        group.MapGet("/zones.garmin.gpx", ExportZonesGarminGpxAsync);
         group.MapGet("/tracks.geojson", ExportTracksGeoJsonAsync);
         group.MapGet("/tracks.gpx", ExportTracksGpxAsync);
         return endpoints;
@@ -104,6 +105,33 @@ public static class ImportExportEndpoints
             var points = zone.Geometry.ExteriorRing.Coordinates.Select(coordinate => new XElement(ns + "trkpt", new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
             root.Add(new XElement(ns + "trk", new XElement(ns + "name", zone.Name), new XElement(ns + "trkseg", points)));
         }
+        return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
+    }
+
+    private static async Task<IResult> ExportZonesGarminGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    {
+        var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+        var ns = XNamespace.Get("http://www.topografix.com/GPX/1/1");
+        var xsi = XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance");
+        var root = new XElement(ns + "gpx",
+            new XAttribute("version", "1.1"),
+            new XAttribute("creator", "EFP Garmin export"),
+            new XAttribute(XNamespace.Xmlns + "xsi", xsi),
+            new XAttribute(xsi + "schemaLocation", "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"));
+
+        foreach (var zone in zones)
+        {
+            var coordinates = zone.Geometry.ExteriorRing.Coordinates.ToList();
+            if (coordinates.Count > 0 && !coordinates[0].Equals2D(coordinates[^1])) coordinates.Add(coordinates[0]);
+            var points = coordinates.Select(coordinate => new XElement(ns + "trkpt",
+                new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)),
+                new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
+            root.Add(new XElement(ns + "trk",
+                new XElement(ns + "name", zone.Name),
+                new XElement(ns + "type", "boundary"),
+                new XElement(ns + "trkseg", points)));
+        }
+
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
