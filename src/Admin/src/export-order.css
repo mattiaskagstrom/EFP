@@ -1,0 +1,10 @@
+/* Keep GPX as the first export choice for zones while preserving the two-column layout. */
+.export-links strong:first-child + a {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.export-links strong:first-child + a + a {
+  grid-column: 1;
+  grid-row: 2;
+}

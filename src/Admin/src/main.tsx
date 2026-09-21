@@ -9,6 +9,7 @@ import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
+import './export-order.css';
 import { filterZonesByName } from './zoneSearch';
 
 type Investigation = { id: string; name: string; status: string; description?: string };
@@ -89,6 +90,14 @@ function App() {
     if (!selectedZoneId) return;
     window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.zone-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
   }, [selectedZoneId]);
+  useEffect(() => {
+    const onZoneCreated = (event: Event) => {
+      const zone = (event as CustomEvent<Zone>).detail;
+      if (zone) addPendingZone(zone);
+    };
+    window.addEventListener('efp:zone-created', onZoneCreated);
+    return () => window.removeEventListener('efp:zone-created', onZoneCreated);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -171,6 +180,12 @@ function App() {
   };
   const toggleZoneVisibility = (zoneId: string) => setHiddenZoneIds(current => ({ ...current, [zoneId]: !current[zoneId] }));
   const selectZone = (zoneId: string) => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); };
+  const addPendingZone = (zone: Zone) => {
+    setZones(current => [...current, zone]);
+    setZoneDrafts(current => ({ ...current, [zone.id]: { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea } }));
+    setSelectedZoneId(zone.id);
+    setExpandedZoneId(zone.id);
+  };
 
   const chooseTool = (tool: ActiveTool, action: () => void) => { if (activeTool === tool) { setActiveTool('none'); editor?.stop(); return; } setActiveTool(tool); action(); };
   const mapLayers: Record<MapType, { url: string; attribution: string }> = {
@@ -310,7 +325,8 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
       if (splitSelectionMode.current) {
         splitSelectionMode.current = false;
         splitTarget.current = layer;
-        if (layer.__zoneId) onZoneSelect(layer.__zoneId);
+        const zoneId = layer.__zoneId ?? layer.__zone?.id;
+        if (zoneId) onZoneSelect(zoneId);
         layer.setStyle({ color: '#f59e0b', weight: 6 });
         geomanMap.pm?.enableDraw?.('Line', { pathOptions: { color: '#f59e0b', weight: 5, dashArray: '10 6' } });
         return;
@@ -322,19 +338,20 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
         layer.pm?.enable?.({ allowSelfIntersection: false });
         return;
       }
-      if (layer.__zoneId) onZoneSelect(layer.__zoneId);
+      const zoneId = layer.__zoneId ?? layer.__zone?.id;
+      if (zoneId) onZoneSelect(zoneId);
     });
     updateZoneLabel(layer);
   };
   const updateZoneDetails = (zoneId: string, details: ZoneDetails) => {
-    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId);
+    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId || candidate.__zone?.id === zoneId);
     if (!layer) return;
     layer.__zone = { ...layer.__zone, ...details };
     updateZoneLabel(layer);
     saveHistory();
   };
   const simplifyZone = (zoneId: string, toleranceMeters: number) => {
-    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId);
+    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId || candidate.__zone?.id === zoneId);
     if (!layer) return;
     const coordinates = getPolygonCoordinates(layer);
     if (!coordinates || coordinates.length < 5) return;
@@ -410,19 +427,36 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
       event.layer.pm?.enable?.({ allowSelfIntersection: false }); event.layer.on('pm:edit pm:dragend', saveHistory); event.layer.on('pm:remove', saveHistory); saveHistory(); onToolChange('none');
     };
     const onRemove = () => saveHistory();
-    map.on('pm:create', onCreate); map.on('pm:remove', onRemove); onReady(api);
-    return () => { map.off('pm:create', onCreate); map.off('pm:remove', onRemove); };
+    const onNewPolygon = (event: any) => {
+      const shape = event.layer.pm?.getShape?.() ?? event.layer.toGeoJSON().geometry.type;
+      if (!['Polygon', 'Rectangle'].includes(shape)) return;
+      const coordinates = getPolygonCoordinates(event.layer);
+      if (!coordinates) return;
+      const id = `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
+      const zone: Zone = { id, name: `Zon ${zones.length + 1}`, status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
+      event.layer.__zone = zone;
+      event.layer.__zoneId = undefined;
+      configureZoneLayer(event.layer);
+      window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone }));
+    };
+    map.on('pm:create', onCreate); map.on('pm:create', onNewPolygon); map.on('pm:remove', onRemove); onReady(api);
+    return () => { map.off('pm:create', onCreate); map.off('pm:create', onNewPolygon); map.off('pm:remove', onRemove); };
   }, [map]);
   useEffect(() => {
     if (!geomanMap.pm) return;
+    const persistedZones = zones.filter(zone => !zone.id.startsWith('draft-'));
     serverZoneLayers.current.forEach(layer => layer.remove());
-    serverZoneLayers.current = zones.map(zone => {
+    serverZoneLayers.current = persistedZones.map(zone => {
       const layer: any = L.polygon(toLatLngs(zone.geometry.coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 }).addTo(map);
       layer.__zoneId = zone.id; layer.__zone = zone; geomanMap.pm.reInitLayer?.(layer);
       configureZoneLayer(layer);
       return layer;
     });
-    initialServerZoneIds.current = zones.map(zone => zone.id);
+    initialServerZoneIds.current = persistedZones.map(zone => zone.id);
+    if (serverZoneLayers.current.length > 0) {
+      const zoneBounds = L.featureGroup(serverZoneLayers.current).getBounds();
+      if (zoneBounds.isValid()) map.fitBounds(zoneBounds, { padding: [48, 48], maxZoom: 16, animate: false });
+    }
     history.current = [snapshot()]; historyIndex.current = 0; onReady(api);
   }, [map, zones]);
   useEffect(() => {
@@ -437,10 +471,28 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
   }, [selectedZoneId, hiddenZoneIds, zones]);
   useEffect(() => {
     if (!selectedZoneId) return;
-    const layer = serverZoneLayers.current.find(candidate => candidate.__zoneId === selectedZoneId);
+    const layer = getLayers().find((candidate: any) => candidate.__zoneId === selectedZoneId || candidate.__zone?.id === selectedZoneId);
     const bounds = layer?.getBounds?.();
     if (bounds?.isValid?.()) map.panTo(bounds.getCenter(), { animate: true });
   }, [selectedZoneId, zones]);
+  useEffect(() => {
+    if (zones.length > 0) return;
+    let active = true;
+    const fitSweden = () => {
+      if (!active) return;
+      map.fitBounds(L.latLngBounds([[55.2, 10.8], [69.2, 24.2]]), { padding: [32, 32], animate: false });
+    };
+    if (!navigator.geolocation) {
+      fitSweden();
+      return () => { active = false; };
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => { if (active) map.setView([position.coords.latitude, position.coords.longitude], 13, { animate: false }); },
+      fitSweden,
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 5000 },
+    );
+    return () => { active = false; };
+  }, [map, zones.length]);
   return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><button className={`map-split-tool ${activeTool === 'Split' ? 'active' : ''}`} title="Klicka på en zon och rita sedan en delningslinje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Splitta zon</button></>;
 }
 
