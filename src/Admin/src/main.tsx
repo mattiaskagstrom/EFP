@@ -9,6 +9,7 @@ import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
+import { filterZonesByName } from './zoneSearch';
 
 type Investigation = { id: string; name: string; status: string; description?: string };
 type Zone = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; areaKm2?: number; geometry: { coordinates: number[][] } };
@@ -178,7 +179,7 @@ function App() {
     satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri' },
   };
   const selectedMapLayer = mapLayers[mapType];
-  const matchingZones = zones.filter(zone => (zoneDrafts[zone.id]?.name ?? zone.name).toLocaleLowerCase().includes(zoneSearch.trim().toLocaleLowerCase()));
+  const matchingZones = filterZonesByName(zones, zoneSearch, Object.fromEntries(Object.entries(zoneDrafts).map(([id, draft]) => [id, draft.name])));
 
   if (!selected) return <main className="selection-screen">
     <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>

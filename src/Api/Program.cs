@@ -36,3 +36,5 @@ app.MapZoneEndpoints();
 app.MapReferencePointEndpoints();
 app.MapImportExportEndpoints();
 app.Run();
+
+public partial class Program { }

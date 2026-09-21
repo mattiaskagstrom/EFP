@@ -1,0 +1,17 @@
+{
+  "name": "efp",
+  "private": true,
+  "scripts": {
+    "test": "pnpm test:frontend && pnpm test:backend",
+    "test:frontend": "pnpm --filter efp-admin test",
+    "test:backend": "dotnet test tests/Api.UnitTests/Api.UnitTests.csproj && dotnet test tests/Api.ContractTests/Api.ContractTests.csproj",
+    "test:api-contract": "dotnet test tests/Api.ContractTests/Api.ContractTests.csproj --filter FullyQualifiedName~ApiContractTests",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:critical": "playwright test --grep @critical",
+    "test:e2e:full": "playwright test",
+    "test:coverage": "pnpm test:frontend -- --coverage && dotnet test tests/Api.ContractTests/Api.ContractTests.csproj --collect:\"XPlat Code Coverage\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}

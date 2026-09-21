@@ -1,0 +1,69 @@
+name: CI fast
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Restore dependencies
+        run: |
+          dotnet restore tests/Api.ContractTests/Api.ContractTests.csproj
+          dotnet restore tests/Api.UnitTests/Api.UnitTests.csproj
+          pnpm install --frozen-lockfile
+      - name: Backend unit tests
+        run: dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --no-restore --collect:"XPlat Code Coverage"
+      - name: Backend contract tests
+        run: dotnet test tests/Api.ContractTests/Api.ContractTests.csproj --no-restore --collect:"XPlat Code Coverage"
+      - name: Frontend build and unit tests
+        run: |
+          pnpm --filter efp-admin build
+          pnpm --filter efp-admin test
+      - name: Start application stack
+        run: docker compose up -d --build
+      - name: Wait for API
+        run: |
+          for i in {1..30}; do curl --fail http://localhost:8080/health && exit 0; sleep 2; done
+          docker compose logs
+          exit 1
+      - name: Compare OpenAPI v1 contract
+        run: |
+          curl --fail --silent http://localhost:8080/openapi/v1.json > openapi.current.json
+          node scripts/compare-openapi.mjs tests/contracts/openapi.v1.json openapi.current.json
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Smoke and critical E2E
+        run: |
+          pnpm test:e2e:smoke
+          pnpm test:e2e:critical
+        env:
+          EFP_E2E_BASE_URL: http://localhost:5173
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-test-results
+          path: |
+            openapi.current.json
+            test-results/
+            playwright-report/
+      - name: Stop application stack
+        if: always()
+        run: docker compose down -v

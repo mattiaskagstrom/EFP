@@ -1,0 +1,48 @@
+name: CI full E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  full-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Start clean application stack
+        run: docker compose up -d --build
+      - name: Wait for API
+        run: |
+          for i in {1..30}; do curl --fail http://localhost:8080/health && exit 0; sleep 2; done
+          docker compose logs
+          exit 1
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run full E2E suite
+        run: pnpm test:e2e:full
+        env:
+          EFP_E2E_BASE_URL: http://localhost:5173
+      - name: Upload full E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-e2e-results
+          path: |
+            test-results/
+            playwright-report/
+      - name: Stop application stack
+        if: always()
+        run: docker compose down -v

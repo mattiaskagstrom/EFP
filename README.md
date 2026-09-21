@@ -11,6 +11,7 @@ Krav och planeringsunderlag för en applikation som stödjer patrullsök och ska
 - [Action items](docs/action-items.md) – prioriterad genomförandeplan med definitioner av klart.
 - [MVP och öppna beslut](docs/mvp-och-oppna-beslut.md) – förslag på första version samt frågor som behöver beslutas.
 - [Installation på Proxmox](docs/proxmox-installation.md) – Community Scripts-liknande installation i Debian LXC.
+- [Teststrategi](docs/testing.md) – lokala tester, API-kontrakt och GitHub Actions.
 
 Dokumenten är ett tidigt kravunderlag och ska förfinas tillsammans med användare, insatsledning och tekniskt ansvariga.
 
