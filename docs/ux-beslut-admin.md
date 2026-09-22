@@ -96,6 +96,12 @@ Verktyget **Splitta zon** aktiveras separat från övriga ritverktyg. Användare
 
 Splitten ändrar inte servern direkt. Originalzonen tas bort och delzonerna sparas först när användaren väljer **Spara ändringar**. Om linjen inte delar zonen i två giltiga polygoner ska originalzonen ligga kvar och användaren få en begriplig återkoppling.
 
+## Slå ihop zoner
+
+Verktyget **Slå ihop zoner** aktiveras separat i kartans verktygsfält. Användaren väljer först den ena zonen och därefter den andra. Zonerna måste dela en gemensam kant; annars visas ett felmeddelande och zonerna lämnas oförändrade.
+
+En lyckad sammanslagning skapar en lokal draft-zon direkt i kartan och zonlistan. De ursprungliga zonerna tas bort lokalt och ersätts permanent först när användaren väljer **Spara ändringar**.
+
 Importflödet ska ge återkoppling om lyckad eller misslyckad import. Vid fortsatt utveckling bör listan även visa importtid, antal punkter och eventuella valideringsvarningar.
 
 ## Kartan

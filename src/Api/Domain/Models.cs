@@ -40,7 +40,7 @@ public sealed class Zone
     public bool ShowArea { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
-    public Polygon Geometry { get; set; } = default!;
+    public Geometry Geometry { get; set; } = default!;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 

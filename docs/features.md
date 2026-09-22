@@ -48,7 +48,7 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Spara alla lokala kartändringar med “Spara ändringar”.
 - [x] Kasta lokala kartändringar med “Släng ändringar” och hämta insatsens sparade zoner igen.
 - [ ] Kopiera zoner.
-- [ ] Slå ihop zoner.
+- [x] Slå ihop två angränsande zoner längs deras gemensamma kant.
 
 ### Zonlista och zoninställningar
 

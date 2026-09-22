@@ -17,7 +17,7 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : DbCon
         modelBuilder.Entity<Zone>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Zone>().Property(x => x.SearchMethod).HasConversion<string>();
         modelBuilder.Entity<ReferencePoint>().Property(x => x.Type).HasConversion<string>();
-        modelBuilder.Entity<Zone>().Property(x => x.Geometry).HasColumnType("geometry (Polygon, 4326)");
+        modelBuilder.Entity<Zone>().Property(x => x.Geometry).HasColumnType("geometry (Geometry, 4326)");
         modelBuilder.Entity<Zone>().HasQueryFilter(x => !x.IsDeleted);
         modelBuilder.Entity<Track>().Property(x => x.Geometry).HasColumnType("geometry (LineString, 4326)");
         modelBuilder.Entity<ReferencePoint>().Property(x => x.Geometry).HasColumnType("geometry (Point, 4326)");

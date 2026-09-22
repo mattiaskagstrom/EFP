@@ -92,7 +92,7 @@ public static class ImportExportEndpoints
     private static async Task<IResult> ExportZonesGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
     {
         var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
-        var features = zones.Select(zone => new { type = "Feature", id = zone.Id, properties = new { zone.Name, zone.Status, zone.SearchMethod, zone.Priority, zone.AssignedGroup }, geometry = new { type = "Polygon", coordinates = new[] { zone.Geometry.ExteriorRing.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } } });
+        var features = zones.Select(zone => new { type = "Feature", id = zone.Id, properties = new { zone.Name, zone.Status, zone.SearchMethod, zone.Priority, zone.AssignedGroup }, geometry = ToGeoJsonGeometry(zone.Geometry) });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
@@ -103,7 +103,7 @@ public static class ImportExportEndpoints
         var root = new XElement(ns + "gpx", new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
         foreach (var zone in zones)
         {
-            var points = zone.Geometry.ExteriorRing.Coordinates.Select(coordinate => new XElement(ns + "trkpt", new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
+            var points = zone.Geometry.Coordinates.Select(coordinate => new XElement(ns + "trkpt", new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
             root.Add(new XElement(ns + "trk", new XElement(ns + "name", zone.Name), new XElement(ns + "trkseg", points)));
         }
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
@@ -122,7 +122,7 @@ public static class ImportExportEndpoints
 
         foreach (var zone in zones)
         {
-            var coordinates = zone.Geometry.ExteriorRing.Coordinates.ToList();
+            var coordinates = zone.Geometry.Coordinates.ToList();
             if (coordinates.Count > 0 && !coordinates[0].Equals2D(coordinates[^1])) coordinates.Add(coordinates[0]);
             var points = coordinates.Select(coordinate => new XElement(ns + "trkpt",
                 new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)),
@@ -156,4 +156,8 @@ public static class ImportExportEndpoints
     }
 
     private static double Parse(string? value) => double.Parse(value ?? throw new FormatException("Missing coordinate."), CultureInfo.InvariantCulture);
+
+    private static object ToGeoJsonGeometry(Geometry geometry) => geometry.GeometryType == "Polygon"
+        ? new { type = "Polygon", coordinates = new[] { geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } }
+        : new { type = "LineString", coordinates = geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() };
 }
