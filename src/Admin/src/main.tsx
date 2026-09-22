@@ -13,7 +13,7 @@ import 'leaflet/dist/leaflet.css';
 import './styles.css';
 import { filterSectorsByName } from './sectorSearch';
 import { InvestigationEditButton } from './InvestigationEditButton';
-import { exportFormats } from './exportFormats';
+import { exportFormats, type ExportFormat, type ExportSelection } from './exportFormats';
 
 type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
@@ -56,6 +56,10 @@ function App() {
   const [sectorsExpanded, setSectorsExpanded] = useState(true);
   const [sectorSearch, setSectorSearch] = useState('');
   const [saveConfirmation, setSaveConfirmation] = useState(false);
+  const [exportSectorIds, setExportSectorIds] = useState<string[]>([]);
+  const [exportTrackIds, setExportTrackIds] = useState<string[]>([]);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
   const [investigationSaving, setInvestigationSaving] = useState(false);
 
@@ -85,7 +89,7 @@ function App() {
     setReferencePoints(loadedReferencePoints);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
   };
-  useEffect(() => { setHiddenSectorIds({}); setSectorsExpanded(true); setSectorSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setHiddenSectorIds({}); setSectorsExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => {
     if (!saveConfirmation) return;
@@ -282,6 +286,12 @@ function App() {
   };
   const selectedMapLayer = mapLayers[mapType];
   const matchingSectors = filterSectorsByName(sectors, sectorSearch, Object.fromEntries(Object.entries(sectorDrafts).map(([id, draft]) => [id, draft.name])));
+  const exportSelection: ExportSelection = {
+    sectorIds: exportSectorIds,
+    trackIds: exportTrackIds,
+    from: exportFrom ? new Date(exportFrom).toISOString() : undefined,
+    to: exportTo ? new Date(exportTo).toISOString() : undefined,
+  };
   const nextSectorName = () => {
     const names = new Set(sectors.map(sector => (sectorDrafts[sector.id]?.name ?? sector.name).trim().toLocaleLowerCase()));
     let number = 1;
@@ -321,13 +331,50 @@ function App() {
                 {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
             })}</>}
         </section>
-        <details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={format.sectors(API, selected.id)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={format.tracks(API, selected.id)}>{format.label}</a>)}</div></details>
+        <ExportPanel sectors={sectors} tracks={tracks} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} />
         <section className="sidebar-section"><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section>
         <section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length > 0 && <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span><input aria-label={`POD för ${track.sourceFile ?? track.callsign ?? 'spår'}`} type="number" min="0" max="100" step="0.1" value={track.pod ?? ''} placeholder="POD %" onChange={event => void updateTrackPod(track, event.target.value)} /></label>)}</div>}</section>
       </aside>
       <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
   </main>;
+}
+
+type ExportPanelProps = {
+  sectors: Sector[];
+  tracks: Track[];
+  selection: { sectorIds: string[]; trackIds: string[]; from: string; to: string };
+  onSectorIdsChange: (ids: string[]) => void;
+  onTrackIdsChange: (ids: string[]) => void;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  getSectorUrl: (format: ExportFormat) => string;
+  getTrackUrl: (format: ExportFormat) => string;
+};
+
+function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIdsChange, onFromChange, onToChange, getSectorUrl, getTrackUrl }: ExportPanelProps) {
+  const allSectorIds = sectors.map(sector => sector.id);
+  const allTrackIds = tracks.map(track => track.id);
+  const toggle = (id: string, checked: boolean, selectedIds: string[], allIds: string[], onChange: (ids: string[]) => void) => {
+    if (checked) {
+      if (selectedIds.length > 0 && !selectedIds.includes(id)) onChange([...selectedIds, id]);
+      return;
+    }
+    onChange(selectedIds.length === 0 ? allIds.filter(item => item !== id) : selectedIds.filter(item => item !== id));
+  };
+  return <details className="sidebar-section export-section"><summary>Exportera</summary>
+    <div className="export-selection">
+      <p className="muted">Lämna urvalet tomt för att exportera alla.</p>
+      <fieldset><legend>Sektorer</legend>
+        {sectors.length === 0 ? <span className="muted">Inga sektorer.</span> : sectors.map(sector => <label key={sector.id} className="export-checkbox"><input type="checkbox" checked={selection.sectorIds.length === 0 || selection.sectorIds.includes(sector.id)} onChange={event => toggle(sector.id, event.target.checked, selection.sectorIds, allSectorIds, onSectorIdsChange)} /> {sector.name || 'Namnlös sektor'}</label>)}
+      </fieldset>
+      <fieldset><legend>Spår</legend>
+        {tracks.length === 0 ? <span className="muted">Inga spår.</span> : tracks.map(track => <label key={track.id} className="export-checkbox"><input type="checkbox" checked={selection.trackIds.length === 0 || selection.trackIds.includes(track.id)} onChange={event => toggle(track.id, event.target.checked, selection.trackIds, allTrackIds, onTrackIdsChange)} /> {track.sourceFile ?? track.callsign ?? 'GPX-import'}</label>)}
+      </fieldset>
+      <fieldset><legend>Tidsintervall för spår</legend><div className="export-period"><label>Från<input type="datetime-local" value={selection.from} onChange={event => onFromChange(event.target.value)} /></label><label>Till<input type="datetime-local" value={selection.to} onChange={event => onToChange(event.target.value)} /></label></div><span className="muted">Spår utan tidsstämplar tas inte med när intervall anges.</span></fieldset>
+    </div>
+    <div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={getSectorUrl(format)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={getTrackUrl(format)}>{format.label}</a>)}</div>
+  </details>;
 }
 
 type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string; searchConditions: string };

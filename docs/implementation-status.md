@@ -10,6 +10,7 @@ Följande är implementerat som en körbar MVP-bas:
 - CRUD för sökinsatser och sektorer.
 - GeoJSON-export för sektorer och spår.
 - GPX-import av track points och GPX-export av spår.
+- Exporturval för spår och sektorer samt tidsintervall för spår.
 - CRUD för PLS/LKP/IPP-referenspunkter via API.
 - Health endpoint och OpenAPI.
 - React/TypeScript-admin med OpenStreetMap-karta.

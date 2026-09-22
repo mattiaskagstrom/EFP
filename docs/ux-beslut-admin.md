@@ -227,7 +227,7 @@ Framtida versioner bör komplettera sparandet med formulär för sektorns namn, 
 
 Export av sektorer ligger i kartans toolbar eftersom exporten gäller det geografiska planeringsunderlaget. Exportknappen ska vara kopplad till vald sökinsats och vara inaktiv eller tydligt begränsad när ingen insats är vald.
 
-I insatsmenyn är exportfunktionerna samlade i en hopfällbar sektion. Sektorer kan exporteras som både GeoJSON och GPX, medan spår kan exporteras som GPX eller GeoJSON.
+I insatsmenyn är exportfunktionerna samlade i en hopfällbar sektion. Användaren kan välja enskilda sektorer och spår före export; om urvalet lämnas tomt exporteras alla. För spår kan användaren dessutom ange ett valfritt tidsintervall. Spår utan tidsstämplar tas inte med när ett intervall används. Sektorer kan exporteras som både GeoJSON och GPX, medan spår kan exporteras som GPX eller GeoJSON.
 
 Framtida importflöden bör visa förhandsgranskning, antal objekt och eventuella valideringsfel innan data sparas.
 

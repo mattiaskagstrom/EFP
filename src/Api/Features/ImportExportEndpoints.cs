@@ -3,6 +3,7 @@ using System.Xml.Linq;
 using Efp.Api.Data;
 using Efp.Api.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Polygonize;
@@ -101,16 +102,20 @@ public static class ImportExportEndpoints
         return polygonizer.GetPolygons().OfType<Polygon>().Where(polygon => polygon.IsValid && polygon.Area > 0).ToList();
     }
 
-    private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
     {
-        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
+        var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
+        var sectors = await query.ToListAsync(ct);
         var features = sectors.Select(sector => new { type = "Feature", id = sector.Id, properties = new { sector.Name, sector.Status, sector.SearchMethod, sector.Priority, sector.AssignedGroup }, geometry = ToGeoJsonGeometry(sector.Geometry) });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportSectorsGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
     {
-        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+        var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
+        var sectors = await query.OrderBy(x => x.Priority).ToListAsync(ct);
         var ns = XNamespace.Get("http://www.topografix.com/GPX/1/1");
         var root = new XElement(ns + "gpx", new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
         foreach (var sector in sectors)
@@ -121,9 +126,11 @@ public static class ImportExportEndpoints
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportSectorsGarminGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGarminGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
     {
-        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+        var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
+        var sectors = await query.OrderBy(x => x.Priority).ToListAsync(ct);
         var ns = XNamespace.Get("http://www.topografix.com/GPX/1/1");
         var xsi = XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance");
         var root = new XElement(ns + "gpx",
@@ -148,16 +155,22 @@ public static class ImportExportEndpoints
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, CancellationToken ct)
     {
-        var tracks = await db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
+        if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
+        var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
+        var tracks = await query.ToListAsync(ct);
         var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.StartedAt, track.EndedAt, track.Pod }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, CancellationToken ct)
     {
-        var tracks = await db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
+        if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
+        var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
+        var tracks = await query.ToListAsync(ct);
         var root = new XElement(XName.Get("gpx", "http://www.topografix.com/GPX/1/1"), new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
         foreach (var track in tracks)
         {
@@ -165,6 +178,14 @@ public static class ImportExportEndpoints
             root.Add(trk);
         }
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
+    }
+
+    private static IQueryable<Track> ApplyTrackFilter(IQueryable<Track> query, Guid[]? trackIds, DateTimeOffset? fromDate, DateTimeOffset? toDate)
+    {
+        if (trackIds is { Length: > 0 }) query = query.Where(x => trackIds.Contains(x.Id));
+        if (fromDate.HasValue) query = query.Where(x => x.StartedAt.HasValue && (x.EndedAt == null || x.EndedAt >= fromDate));
+        if (toDate.HasValue) query = query.Where(x => x.StartedAt.HasValue && x.StartedAt <= toDate);
+        return query;
     }
 
     private static double Parse(string? value) => double.Parse(value ?? throw new FormatException("Missing coordinate."), CultureInfo.InvariantCulture);

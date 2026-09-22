@@ -94,8 +94,15 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(created.GetProperty("areaKm2").GetDouble() > 0);
         Assert.Equal("Patrol", created.GetProperty("searchMethod").GetString());
 
+        var selectedExport = await client.GetAsync($"/api/v1/investigations/{investigation}/sectors.geojson?sectorIds={sectorId}");
+        Assert.Equal(HttpStatusCode.OK, selectedExport.StatusCode);
+        Assert.Contains(sectorId.ToString(), await selectedExport.Content.ReadAsStringAsync());
+
         var invalid = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", new { payload.name, payload.status, payload.searchMethod, payload.priority, geometry = new { coordinates = new[] { new[] { 18.0, 59.0 }, new[] { 18.01, 59.0 } } } });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var invalidExportPeriod = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.geojson?from=2026-09-22T16:00:00Z&to=2026-09-22T08:00:00Z");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidExportPeriod.StatusCode);
 
         var delete = await client.DeleteAsync($"/api/v1/investigations/{investigation}/sectors/{sectorId}");
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);

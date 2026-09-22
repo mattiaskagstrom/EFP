@@ -18,4 +18,18 @@ describe('exportFormats', () => {
       'tracks.geojson',
     ]);
   });
+
+  it('adds sector, track and period filters to export links', () => {
+    const url = exportFormats[2].tracks('/api/v1', 'investigation-1', {
+      sectorIds: ['sector-1'],
+      trackIds: ['track-1', 'track-2'],
+      from: '2026-09-22T08:00:00.000Z',
+      to: '2026-09-22T16:00:00.000Z',
+    });
+    const query = new URL(url, 'https://example.test').searchParams;
+    expect(query.getAll('sectorIds')).toEqual(['sector-1']);
+    expect(query.getAll('trackIds')).toEqual(['track-1', 'track-2']);
+    expect(query.get('from')).toBe('2026-09-22T08:00:00.000Z');
+    expect(query.get('to')).toBe('2026-09-22T16:00:00.000Z');
+  });
 });

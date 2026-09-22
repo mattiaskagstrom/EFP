@@ -85,7 +85,7 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Exportera sektorer som Garmin-anpassad GPX där varje polygon representeras som en sluten track.
 - [x] Exportera sektorer som GeoJSON.
 - [x] Exportera spår som GeoJSON.
-- [ ] Välja ett urval av spår, sektorer eller tidsintervall inför export.
+- [x] Välja ett urval av spår och sektorer samt ett tidsintervall inför export.
 
 ### Insatsanslutning och uppföljning
 
@@ -100,8 +100,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 
 ### Framtida planeringsstöd
 
-- [ ] Registrera PLS, LKP och IPP på karta och i insatsen.
-- [ ] Registrera POA, POD och andra sökförutsättningar.
+- [x] Registrera PLS, LKP och IPP på karta och i insatsen.
+- [x] Registrera POA, POD och andra sökförutsättningar.
 - [ ] Dokumentera och välja patrullsök, skallgångssök och ledstångssök.
 - [ ] Automatiskt föreslå sektorindelning utifrån MSO-profilering.
 - [ ] Granska, flytta, dela, slå ihop och ta bort föreslagna sektorer innan publicering.
