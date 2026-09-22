@@ -31,6 +31,7 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Rita polygoner.
 - [x] Rita fyrkanter.
 - [x] Rita cirklar.
+- [x] Spara ritade cirklar som zoner genom att konvertera dem till slutna polygoner.
 - [x] Rita sträckor och andra linjeobjekt på kartan.
 - [x] Lägga ut text på kartan.
 - [x] Välja färg för nya ritobjekt.
