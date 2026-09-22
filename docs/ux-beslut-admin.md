@@ -7,7 +7,7 @@ Detta dokument beskriver de UX-beslut som hittills tagits för admin-gränssnitt
 Admin-gränssnittet ska ge insatsledning och administratörer ett snabbt och tydligt arbetsflöde för att:
 
 - skapa och välja sökinsatser
-- planera och redigera zoner på karta
+- planera och redigera sektorer på karta
 - importera och exportera geodata
 - se underlag som spår, punkter och referenspunkter
 
@@ -27,7 +27,7 @@ Kartvyn ska vara den dominerande ytan eftersom de viktigaste arbetsuppgifterna s
 
 Användaren ska först välja en befintlig sökinsats eller skapa en ny. Ingen karta visas innan en sökinsats är vald. Detta minskar risken att användaren arbetar mot fel insats och gör det tydligt vilket geografiskt underlag som laddas.
 
-När en sökinsats väljs laddas dess zoner, spår och övriga kartunderlag. Vänsterpanelen byter då från insatsväljare till insatsmeny och visar funktioner som gäller den valda insatsen. Där ska användaren kunna byta insats, spara kartrelaterade ändringar, exportera underlag och importera GPX.
+När en sökinsats väljs laddas dess sektorer, spår och övriga kartunderlag. Vänsterpanelen byter då från insatsväljare till insatsmeny och visar funktioner som gäller den valda insatsen. Där ska användaren kunna byta insats, spara kartrelaterade ändringar, exportera underlag och importera GPX.
 
 ## Sökinsatser
 
@@ -40,7 +40,7 @@ Beslut:
 - Ny sökinsats skapas genom namn och knappen **Skapa sökinsats**.
 - Insatslistan visar insatsens namn och status.
 - Den valda insatsen markeras tydligt.
-- Kartans zoner och exportlänkar knyts till vald insats.
+- Kartans sektorer och exportlänkar knyts till vald insats.
 - Fel vid skapande visas nära det övergripande gränssnittet och ska inte tysta misslyckade operationer.
 
 ### Framtida utveckling
@@ -51,11 +51,11 @@ När sökinsatsen får fler fält bör skapandet utvecklas till ett stegvis form
 
 För en vald sökinsats ska vänsterpanelen samla insatsspecifika funktioner:
 
-- spara zon- och kartändringar
-- slänga lokala zonändringar och läsa om serverversionen
-- exportera zoner
+- spara sektor- och kartändringar
+- slänga lokala sektorändringar och läsa om serverversionen
+- exportera sektorer
 - exportera spår som GPX eller GeoJSON
-- importera zoner från GPX
+- importera sektorer från GPX
 - importera spårdata från GPX
 - lista importerade GPX-filer
 - visa eller dölja enskilda importerade spår i kartan
@@ -64,43 +64,43 @@ Karttyp väljs fortsatt i en kontroll direkt ovanpå kartan. Den hör ihop med d
 
 Importerade GPX-spår ska laddas som separata kartlager. En import ska inte försvinna bara för att lagret döljs; kryssrutan styr endast synlighet i den aktuella kartvyn. Filnamn och, när det finns, anropsnamn ska visas i listan.
 
-Zon-GPX och spår-GPX är två separata importflöden. Importerade spår är immutable i adminvyn. Zon-GPX importeras som zoner och kan därefter redigeras tillsammans med övriga zoner. Zonimporten ska stödja både GPX-filer med separata slutna segment och linjeunderlag där slutna områden behöver polygoniseras.
+Sektor-GPX och spår-GPX är två separata importflöden. Importerade spår är immutable i adminvyn. Sektor-GPX importeras som sektorer och kan därefter redigeras tillsammans med övriga sektorer. Sektorimporten ska stödja både GPX-filer med separata slutna segment och linjeunderlag där slutna områden behöver polygoniseras.
 
-Kartändringar hålls lokala tills användaren väljer **Spara ändringar**. **Släng ändringar** återställer lokala zonändringar, inklusive nya, redigerade och borttagna zoner, genom att hämta aktuell version från servern.
+Kartändringar hålls lokala tills användaren väljer **Spara ändringar**. **Släng ändringar** återställer lokala sektorändringar, inklusive nya, redigerade och borttagna sektorer, genom att hämta aktuell version från servern.
 
-## Zonlista och inställningar
+## Sektorlista och inställningar
 
-Vänsterpanelen innehåller en lista över alla sparade zoner i den valda sökinsatsen. Ett klick på en zon i listan markerar motsvarande zon i kartan. Ett klick på en zon i kartan gör samma sak och expanderar zonens inställningar i vänsterpanelen.
+Vänsterpanelen innehåller en lista över alla sparade sektorer i den valda sökinsatsen. Ett klick på en sektor i listan markerar motsvarande sektor i kartan. Ett klick på en sektor i kartan gör samma sak och expanderar sektorns inställningar i vänsterpanelen.
 
-Varje zon har en egen inställningssektion som är hopfälld som standard. Högerklicksmeny används inte för zonmetadata. Den expanderade sektionen ska kunna:
+Varje sektor har en egen inställningssektion som är hopfälld som standard. Högerklicksmeny används inte för sektormetadata. Den expanderade sektionen ska kunna:
 
-- ändra zonens namn
-- markera zonen som sökt eller inte sökt
-- ange när zonen söktes
-- ange zonens poäng
-- välja om zonens namn ska visas på kartan
-- välja om zonens storlek ska visas på kartan i km²
+- ändra sektorns namn
+- markera sektorn som sökt eller inte sökt
+- ange när sektorn söktes
+- ange sektorns poäng
+- välja om sektorns namn ska visas på kartan
+- välja om sektorns storlek ska visas på kartan i km²
 - förenkla polygonen med valbar tolerans i meter
-- visa eller dölja zonen i den aktuella kartvyn
-- radera zonen efter en tydlig bekräftelse
+- visa eller dölja sektorn i den aktuella kartvyn
+- radera sektorn efter en tydlig bekräftelse
 
-Visningsvalen påverkar kartan direkt men sparas tillsammans med övriga zonändringar först när användaren väljer **Spara ändringar**. Spår och andra importer som är immutable ska inte få dessa zoninställningar.
+Visningsvalen påverkar kartan direkt men sparas tillsammans med övriga sektorändringar först när användaren väljer **Spara ändringar**. Spår och andra importer som är immutable ska inte få dessa sektorinställningar.
 
-Att dölja en zon är en lokal visningsinställning och påverkar inte serverdata. Radering kräver bekräftelse i gränssnittet och utförs som soft-delete på servern, så att zonen kan återställas eller granskas i framtida administrationsfunktioner.
+Att dölja en sektor är en lokal visningsinställning och påverkar inte serverdata. Radering kräver bekräftelse i gränssnittet och utförs som soft-delete på servern, så att sektorn kan återställas eller granskas i framtida administrationsfunktioner.
 
-Polygonförenkling sker lokalt och ska minska antalet hörnpunkter utan att ändra zonens avsedda form mer än toleransen tillåter. Förenklingen ska kunna ångras och den nya geometrin valideras när zonen sparas.
+Polygonförenkling sker lokalt och ska minska antalet hörnpunkter utan att ändra sektorns avsedda form mer än toleransen tillåter. Förenklingen ska kunna ångras och den nya geometrin valideras när sektorn sparas.
 
-## Splitta zon
+## Splitta sektor
 
-Verktyget **Splitta zon** aktiveras separat från övriga ritverktyg. Användaren klickar först på den zon som ska delas; zonens outline markeras då tydligt. Därefter ritas en linje genom zonen från kant till kant. Linjen används för att skapa två lokala delzoner.
+Verktyget **Splitta sektor** aktiveras separat från övriga ritverktyg. Användaren klickar först på den sektor som ska delas; sektorns outline markeras då tydligt. Därefter ritas en linje genom sektorn från kant till kant. Linjen används för att skapa två lokala delsektorer.
 
-Splitten ändrar inte servern direkt. Originalzonen tas bort och delzonerna sparas först när användaren väljer **Spara ändringar**. Om linjen inte delar zonen i två giltiga polygoner ska originalzonen ligga kvar och användaren få en begriplig återkoppling.
+Splitten ändrar inte servern direkt. Originalsektorn tas bort och delsektorerna sparas först när användaren väljer **Spara ändringar**. Om linjen inte delar sektorn i två giltiga polygoner ska originalsektorn ligga kvar och användaren få en begriplig återkoppling.
 
-## Slå ihop zoner
+## Slå ihop sektorer
 
-Verktyget **Slå ihop zoner** aktiveras separat i kartans verktygsfält. Användaren väljer först den ena zonen och därefter den andra. Zonerna måste dela en gemensam kant; annars visas ett felmeddelande och zonerna lämnas oförändrade.
+Verktyget **Slå ihop sektorer** aktiveras separat i kartans verktygsfält. Användaren väljer först den ena sektorn och därefter den andra. Sektorerna måste dela en gemensam kant; annars visas ett felmeddelande och sektorerna lämnas oförändrade.
 
-En lyckad sammanslagning skapar en lokal draft-zon direkt i kartan och zonlistan. De ursprungliga zonerna tas bort lokalt och ersätts permanent först när användaren väljer **Spara ändringar**.
+En lyckad sammanslagning skapar en lokal draft-sektor direkt i kartan och sektorlistan. De ursprungliga sektorerna tas bort lokalt och ersätts permanent först när användaren väljer **Spara ändringar**.
 
 Importflödet ska ge återkoppling om lyckad eller misslyckad import. Vid fortsatt utveckling bör listan även visa importtid, antal punkter och eventuella valideringsvarningar.
 
@@ -108,7 +108,7 @@ Importflödet ska ge återkoppling om lyckad eller misslyckad import. Vid fortsa
 
 ### Kartan som primär arbetsyta
 
-Kartan är den primära arbetsytan för zonplanering. Verktyg och inställningar placeras därför nära kartan och inte i ett separat administrationsformulär.
+Kartan är den primära arbetsytan för sektorplanering. Verktyg och inställningar placeras därför nära kartan och inte i ett separat administrationsformulär.
 
 ### Val av karttyp
 
@@ -120,7 +120,7 @@ Första versionen erbjuder:
 - Topografisk – OpenTopoMap
 - Satellit – Esri World Imagery
 
-Karttypen ska påverka bakgrundskartan men inte de ritade objekten. Zoner, spår, punkter och texter ska ligga kvar på samma geografiska position när användaren byter karttyp.
+Karttypen ska påverka bakgrundskartan men inte de ritade objekten. Sektorer, spår, punkter och texter ska ligga kvar på samma geografiska position när användaren byter karttyp.
 
 Kartkällans attribution ska alltid visas enligt respektive leverantörs villkor.
 
@@ -134,7 +134,7 @@ Toolbaren grupperar funktionerna enligt följande:
 
 1. Rita objekt.
 2. Ange stil och text.
-3. Redigera, ångra/gör om, spara zon och exportera.
+3. Redigera, ångra/gör om, spara sektor och exportera.
 
 På mindre skärmar ska grupperna kunna radbrytas utan att verktygen försvinner. Toolbaren ska ligga ovanpå kartan med tillräcklig kontrast och skugga för att vara läsbar mot olika kartbakgrunder.
 
@@ -148,7 +148,7 @@ Följande ritobjekt stöds i adminvyn:
 - sträcka
 - text
 
-Polygon och fyrkant kan användas som grund för zoner. Sträckor kan användas för exempelvis ledstänger eller andra linjära planeringsobjekt. Cirklar och text är visuella planeringsobjekt tills de får tydligare domänmodellering.
+Polygon och fyrkant kan användas som grund för sektorer. Sträckor kan användas för exempelvis ledstänger eller andra linjära planeringsobjekt. Cirklar och text är visuella planeringsobjekt tills de får tydligare domänmodellering.
 
 Text skapas genom att aktivera textverktyget och klicka på kartan. Därefter anges texten i en dialog. Ett permanent textfält i toolbaren används inte, eftersom det skulle duplicera textverktygets funktion och göra arbetsflödet otydligare.
 
@@ -192,7 +192,7 @@ Det aktiva verktyget kan också avaktiveras genom att klicka på samma knapp en 
 
 ### Redigera
 
-Redigeringsläget aktiveras först utan att lägga till redigeringshandtag på kartan. Användaren klickar därefter på den zon som ska redigeras; endast den valda zonen får redigeringshandtag. Detta förhindrar prestandaproblem med komplexa GPX-geometrier.
+Redigeringsläget aktiveras först utan att lägga till redigeringshandtag på kartan. Användaren klickar därefter på den sektor som ska redigeras; endast den valda sektorn får redigeringshandtag. Detta förhindrar prestandaproblem med komplexa GPX-geometrier.
 
 ### Flytta
 
@@ -212,22 +212,22 @@ Ta bort är ett separat läge och ska inte vara aktivt samtidigt som redigering 
 
 Knapparna ska vara inaktiverade när motsvarande historik saknas. Historiken gäller den aktuella kartvyn och ska inte ersätta serverns revisionslogg.
 
-## Spara zon
+## Spara sektor
 
-Att rita en polygon eller fyrkant skapar inte automatiskt en permanent zon i backend. Användaren måste uttryckligen välja **Spara ändringar**.
+Att rita en polygon eller fyrkant skapar inte automatiskt en permanent sektor i backend. Användaren måste uttryckligen välja **Spara ändringar**.
 
 Detta är ett medvetet beslut för att skilja mellan:
 
 - tillfälliga skissobjekt på kartan
-- zoner som ingår i sökinsatsens planering
+- sektorer som ingår i sökinsatsens planering
 
-Framtida versioner bör komplettera sparandet med formulär för zonens namn, sökmetod, prioritet och patrull/grupptilldelning.
+Framtida versioner bör komplettera sparandet med formulär för sektorns namn, sökmetod, prioritet och patrull/grupptilldelning.
 
 ## Export
 
-Export av zoner ligger i kartans toolbar eftersom exporten gäller det geografiska planeringsunderlaget. Exportknappen ska vara kopplad till vald sökinsats och vara inaktiv eller tydligt begränsad när ingen insats är vald.
+Export av sektorer ligger i kartans toolbar eftersom exporten gäller det geografiska planeringsunderlaget. Exportknappen ska vara kopplad till vald sökinsats och vara inaktiv eller tydligt begränsad när ingen insats är vald.
 
-I insatsmenyn är exportfunktionerna samlade i en hopfällbar sektion. Zoner kan exporteras som både GeoJSON och GPX, medan spår kan exporteras som GPX eller GeoJSON.
+I insatsmenyn är exportfunktionerna samlade i en hopfällbar sektion. Sektorer kan exporteras som både GeoJSON och GPX, medan spår kan exporteras som GPX eller GeoJSON.
 
 Framtida importflöden bör visa förhandsgranskning, antal objekt och eventuella valideringsfel innan data sparas.
 
@@ -236,7 +236,7 @@ Framtida importflöden bör visa förhandsgranskning, antal objekt och eventuell
 Alla operationer som kan misslyckas ska ge synlig återkoppling. Det gäller bland annat:
 
 - skapande av sökinsats
-- sparande och redigering av zon
+- sparande och redigering av sektor
 - import och export
 - kommunikation med backend
 
@@ -260,8 +260,8 @@ Följande behöver beslutas innan adminvyn används i skarp insats:
 - Ska borttagning kräva bekräftelse?
 - Ska aktivt ritverktyg kunna låsas för upprepad ritning?
 - Ska färg och linjetyp kunna ändras för redan skapade objekt via egenskapspanel?
-- Hur ska överlappande zoner visas och hanteras?
-- Ska zoner få etiketter direkt på kartan?
+- Hur ska överlappande sektorer visas och hanteras?
+- Ska sektorer få etiketter direkt på kartan?
 - Hur visas spår, observationer och importerade objekt i lagerpanelen?
 - Hur hanteras kartor när nätverksanslutningen är dålig eller saknas?
 - Ska export kunna begränsas till valt objekt, aktuell insats eller hela datamängden?

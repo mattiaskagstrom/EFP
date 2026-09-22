@@ -17,10 +17,10 @@ public static class ImportExportEndpoints
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
         group.MapPost("/tracks/import", ImportGpxAsync).DisableAntiforgery();
         group.MapPatch("/tracks/{trackId:guid}", UpdateTrackMetadataAsync);
-        group.MapPost("/zones/import", ImportZonesGpxAsync).DisableAntiforgery();
-        group.MapGet("/zones.geojson", ExportZonesGeoJsonAsync);
-        group.MapGet("/zones.gpx", ExportZonesGarminGpxAsync);
-        group.MapGet("/zones.garmin.gpx", ExportZonesGarminGpxAsync);
+        group.MapPost("/sectors/import", ImportSectorsGpxAsync).DisableAntiforgery();
+        group.MapGet("/sectors.geojson", ExportSectorsGeoJsonAsync);
+        group.MapGet("/sectors.gpx", ExportSectorsGarminGpxAsync);
+        group.MapGet("/sectors.garmin.gpx", ExportSectorsGarminGpxAsync);
         group.MapGet("/tracks.geojson", ExportTracksGeoJsonAsync);
         group.MapGet("/tracks.gpx", ExportTracksGpxAsync);
         group.MapGet("/tracks.garmin.gpx", ExportTracksGpxAsync);
@@ -51,7 +51,7 @@ public static class ImportExportEndpoints
         return Results.Ok(new { track.Id, track.Callsign, track.SourceFile, track.Pod });
     }
 
-    private static async Task<IResult> ImportZonesGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ImportSectorsGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, CancellationToken ct)
     {
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length == 0 || file.Length > 25 * 1024 * 1024) return Results.BadRequest("GPX file must be between 1 byte and 25 MB.");
@@ -59,11 +59,11 @@ public static class ImportExportEndpoints
         await using var stream = file.OpenReadStream();
         var document = await XDocument.LoadAsync(stream, LoadOptions.None, ct);
         var segments = document.Descendants().Where(x => x.Name.LocalName == "trkseg").ToArray();
-        if (segments.Length == 0) return Results.BadRequest("GPX must contain at least one track segment for a zone.");
+        if (segments.Length == 0) return Results.BadRequest("GPX must contain at least one track segment for a sector.");
 
-        var existingCount = await db.Zones.CountAsync(x => x.InvestigationId == investigationId, ct);
+        var existingCount = await db.Sectors.CountAsync(x => x.InvestigationId == investigationId, ct);
         var imported = new List<object>();
-        var created = new List<Zone>();
+        var created = new List<Sector>();
         foreach (var segment in segments)
         {
             var points = segment.Elements().Where(x => x.Name.LocalName == "trkpt").Select(x => new Coordinate(Parse(x.Attribute("lon")?.Value), Parse(x.Attribute("lat")?.Value))).ToArray();
@@ -73,16 +73,16 @@ public static class ImportExportEndpoints
             var polygons = PolygonizeTrack(factory, points);
             foreach (var (polygon, polygonIndex) in polygons.Select((item, index) => (item, index)))
             {
-                var name = string.IsNullOrWhiteSpace(segmentName) ? $"GPX-zon {existingCount + created.Count + 1}" : polygons.Count == 1 ? segmentName.Trim() : $"{segmentName.Trim()} {polygonIndex + 1}";
-                var zone = new Zone { InvestigationId = investigationId, Name = name, Status = ZoneStatus.NotStarted, SearchMethod = SearchMethod.Patrol, Priority = existingCount + created.Count + 1, Instructions = $"Importerad från {file.FileName}", Geometry = polygon };
-                created.Add(zone);
-                imported.Add(new { zone.Name, PointCount = polygon.ExteriorRing.NumPoints });
+                var name = string.IsNullOrWhiteSpace(segmentName) ? $"GPX-sektor {existingCount + created.Count + 1}" : polygons.Count == 1 ? segmentName.Trim() : $"{segmentName.Trim()} {polygonIndex + 1}";
+                var sector = new Sector { InvestigationId = investigationId, Name = name, Status = SectorStatus.NotStarted, SearchMethod = SearchMethod.Patrol, Priority = existingCount + created.Count + 1, Instructions = $"Importerad från {file.FileName}", Geometry = polygon };
+                created.Add(sector);
+                imported.Add(new { sector.Name, PointCount = polygon.ExteriorRing.NumPoints });
             }
         }
 
-        if (created.Count == 0) return Results.BadRequest("GPX innehåller inga giltiga zoner. Filen måste innehålla slutna polygoner eller ett linjeunderlag som kan polygoniseras till områden.");
-        db.Zones.AddRange(created); await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/v1/investigations/{investigationId}/zones", new { FileName = file.FileName, Zones = imported });
+        if (created.Count == 0) return Results.BadRequest("GPX innehåller inga giltiga sektorer. Filen måste innehålla slutna polygoner eller ett linjeunderlag som kan polygoniseras till områden.");
+        db.Sectors.AddRange(created); await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/v1/investigations/{investigationId}/sectors", new { FileName = file.FileName, Sectors = imported });
     }
 
     private static List<Polygon> PolygonizeTrack(GeometryFactory factory, Coordinate[] points)
@@ -101,29 +101,29 @@ public static class ImportExportEndpoints
         return polygonizer.GetPolygons().OfType<Polygon>().Where(polygon => polygon.IsValid && polygon.Area > 0).ToList();
     }
 
-    private static async Task<IResult> ExportZonesGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
     {
-        var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
-        var features = zones.Select(zone => new { type = "Feature", id = zone.Id, properties = new { zone.Name, zone.Status, zone.SearchMethod, zone.Priority, zone.AssignedGroup }, geometry = ToGeoJsonGeometry(zone.Geometry) });
+        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
+        var features = sectors.Select(sector => new { type = "Feature", id = sector.Id, properties = new { sector.Name, sector.Status, sector.SearchMethod, sector.Priority, sector.AssignedGroup }, geometry = ToGeoJsonGeometry(sector.Geometry) });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportZonesGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
     {
-        var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
         var ns = XNamespace.Get("http://www.topografix.com/GPX/1/1");
         var root = new XElement(ns + "gpx", new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
-        foreach (var zone in zones)
+        foreach (var sector in sectors)
         {
-            var points = zone.Geometry.Coordinates.Select(coordinate => new XElement(ns + "trkpt", new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
-            root.Add(new XElement(ns + "trk", new XElement(ns + "name", zone.Name), new XElement(ns + "trkseg", points)));
+            var points = sector.Geometry.Coordinates.Select(coordinate => new XElement(ns + "trkpt", new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
+            root.Add(new XElement(ns + "trk", new XElement(ns + "name", sector.Name), new XElement(ns + "trkseg", points)));
         }
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportZonesGarminGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGarminGpxAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
     {
-        var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+        var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
         var ns = XNamespace.Get("http://www.topografix.com/GPX/1/1");
         var xsi = XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance");
         var root = new XElement(ns + "gpx",
@@ -132,15 +132,15 @@ public static class ImportExportEndpoints
             new XAttribute(XNamespace.Xmlns + "xsi", xsi),
             new XAttribute(xsi + "schemaLocation", "http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"));
 
-        foreach (var zone in zones)
+        foreach (var sector in sectors)
         {
-            var coordinates = zone.Geometry.Coordinates.ToList();
+            var coordinates = sector.Geometry.Coordinates.ToList();
             if (coordinates.Count > 0 && !coordinates[0].Equals2D(coordinates[^1])) coordinates.Add(coordinates[0]);
             var points = coordinates.Select(coordinate => new XElement(ns + "trkpt",
                 new XAttribute("lat", coordinate.Y.ToString(CultureInfo.InvariantCulture)),
                 new XAttribute("lon", coordinate.X.ToString(CultureInfo.InvariantCulture))));
             root.Add(new XElement(ns + "trk",
-                new XElement(ns + "name", zone.Name),
+                new XElement(ns + "name", sector.Name),
                 new XElement(ns + "type", "boundary"),
                 new XElement(ns + "trkseg", points)));
         }

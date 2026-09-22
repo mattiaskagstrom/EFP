@@ -19,19 +19,19 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 
 ### Karta och kartunderlag
 
-- [x] Visa sökinsatsens zoner och importerade spår på karta.
+- [x] Visa sökinsatsens sektorer och importerade spår på karta.
 - [x] Välja karttyp, exempelvis standardkarta, topografisk karta eller satellit.
-- [x] Anpassa kartans vy efter insatsens zoner.
-- [x] Visa Sverige eller webbläsarens position när sökinsatsen saknar zoner.
+- [x] Anpassa kartans vy efter insatsens sektorer.
+- [x] Visa Sverige eller webbläsarens position när sökinsatsen saknar sektorer.
 - [ ] Förhandsvisa och hantera lokalt tillhandahållna kartbilder.
 - [ ] Förbereda eller välja kartunderlag för användning utan internet.
 
-### Zonredigering
+### Sektorredigering
 
 - [x] Rita polygoner.
 - [x] Rita fyrkanter.
 - [x] Rita cirklar.
-- [x] Spara ritade cirklar som zoner genom att konvertera dem till slutna polygoner.
+- [x] Spara ritade cirklar som sektorer genom att konvertera dem till slutna polygoner.
 - [x] Rita sträckor och andra linjeobjekt på kartan.
 - [x] Lägga ut text på kartan.
 - [x] Välja färg för nya ritobjekt.
@@ -40,33 +40,33 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Avsluta aktivt verktyg och återgå till vanlig panorering.
 - [x] Ångra och göra om ändringar med knappar samt Ctrl+Z/Ctrl+Y.
 - [x] Flytta ritade objekt.
-- [x] Redigera zonens geometri genom att först välja zonen.
+- [x] Redigera sektorns geometri genom att först välja sektorn.
 - [x] Ta bort ritade objekt.
 - [x] Förenkla polygoner genom att minska antalet punkter.
-- [x] Dela en zon med en linje.
-- [x] Visa en nyritad zon direkt i zonlistan innan den sparas.
+- [x] Dela en sektor med en linje.
+- [x] Visa en nyritad sektor direkt i sektorlistan innan den sparas.
 - [x] Spara alla lokala kartändringar med “Spara ändringar”.
-- [x] Kasta lokala kartändringar med “Släng ändringar” och hämta insatsens sparade zoner igen.
-- [ ] Kopiera zoner.
-- [x] Slå ihop två angränsande zoner längs deras gemensamma kant.
+- [x] Kasta lokala kartändringar med “Släng ändringar” och hämta insatsens sparade sektorer igen.
+- [ ] Kopiera sektorer.
+- [x] Slå ihop två angränsande sektorer längs deras gemensamma kant.
 
-### Zonlista och zoninställningar
+### Sektorlista och sektorinställningar
 
-- [x] Visa alla zoner i en lista till vänster om kartan.
-- [x] Kollapsa och expandera zonlistan.
-- [x] Söka efter zoner via zonnamn.
-- [x] Välja en zon i listan och markera den på kartan.
-- [x] Panorera kartan till zonen när den väljs i listan.
-- [x] Välja en zon i kartan och expandera motsvarande inställningar i listan.
-- [x] Scrolla listan till zonen när den väljs på kartan.
-- [x] Visa eller dölja en zon i kartan.
-- [x] Ange eller ändra zonens namn.
-- [x] Markera om zonen är sökt och ange när den söktes.
-- [x] Uppdatera zonens poäng.
-- [x] Visa eller dölja zonens namn på kartan.
-- [x] Visa eller dölja zonens storlek i km² på kartan.
-- [x] Radera en zon med bekräftelse.
-- [ ] Ändra sökmetod, prioritet, instruktion och tilldelad patrull/grupp i zonens inställningar.
+- [x] Visa alla sektorer i en lista till vänster om kartan.
+- [x] Kollapsa och expandera sektorlistan.
+- [x] Söka efter sektorer via sektornamn.
+- [x] Välja en sektor i listan och markera den på kartan.
+- [x] Panorera kartan till sektorn när den väljs i listan.
+- [x] Välja en sektor i kartan och expandera motsvarande inställningar i listan.
+- [x] Scrolla listan till sektorn när den väljs på kartan.
+- [x] Visa eller dölja en sektor i kartan.
+- [x] Ange eller ändra sektorns namn.
+- [x] Markera om sektorn är sökt och ange när den söktes.
+- [x] Uppdatera sektorns poäng.
+- [x] Visa eller dölja sektorns namn på kartan.
+- [x] Visa eller dölja sektorns storlek i km² på kartan.
+- [x] Radera en sektor med bekräftelse.
+- [ ] Ändra sökmetod, prioritet, instruktion och tilldelad patrull/grupp i sektorns inställningar.
 - [ ] Visa sökt och återstående yta för insatsen.
 
 ### Import och export
@@ -74,18 +74,18 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Importera flera spår från GPX.
 - [x] Visa importerade spår i en lista.
 - [x] Visa eller dölja enskilda importerade spår.
-- [x] Importera zoner från GPX.
-- [x] Göra GPX-importerade zoner redigerbara.
+- [x] Importera sektorer från GPX.
+- [x] Göra GPX-importerade sektorer redigerbara.
 - [ ] Visa importhistorik med filnamn, tidpunkt och resultat.
 - [ ] Förhandsgranska import innan den sparas.
 - [ ] Hantera dubbletter och partiellt felaktiga importer med tydlig återkoppling.
 - [x] Exportera spår som GPX.
 - [x] Exportera spår som Garmin GPX (samma spårformat, med separat tydlig användarlänk).
-- [x] Exportera zoner som GPX.
-- [x] Exportera zoner som Garmin-anpassad GPX där varje polygon representeras som en sluten track.
-- [x] Exportera zoner som GeoJSON.
+- [x] Exportera sektorer som GPX.
+- [x] Exportera sektorer som Garmin-anpassad GPX där varje polygon representeras som en sluten track.
+- [x] Exportera sektorer som GeoJSON.
 - [x] Exportera spår som GeoJSON.
-- [ ] Välja ett urval av spår, zoner eller tidsintervall inför export.
+- [ ] Välja ett urval av spår, sektorer eller tidsintervall inför export.
 
 ### Insatsanslutning och uppföljning
 
@@ -94,7 +94,7 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Se anslutna och aktiva deltagare.
 - [ ] Se senaste synkronisering för deltagare och spår.
 - [ ] Se alla inskickade spår, punkter och observationer.
-- [ ] Filtrera underlag på zon, tid, patrull, användare och status.
+- [ ] Filtrera underlag på sektor, tid, patrull, användare och status.
 - [ ] Redigera eller komplettera metadata för inskickat underlag.
 - [ ] Visa ändringshistorik för administratören.
 
@@ -103,8 +103,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Registrera PLS, LKP och IPP på karta och i insatsen.
 - [ ] Registrera POA, POD och andra sökförutsättningar.
 - [ ] Dokumentera och välja patrullsök, skallgångssök och ledstångssök.
-- [ ] Automatiskt föreslå zonindelning utifrån MSO-profilering.
-- [ ] Granska, flytta, dela, slå ihop och ta bort föreslagna zoner innan publicering.
+- [ ] Automatiskt föreslå sektorindelning utifrån MSO-profilering.
+- [ ] Granska, flytta, dela, slå ihop och ta bort föreslagna sektorer innan publicering.
 - [ ] Spara vilken profil och vilka indata som låg till grund för förslaget.
 
 ## Mobilapp – användare i sökinsats
@@ -114,8 +114,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Ansluta till en sökinsats genom att skanna en QR-kod.
 - [ ] Ansluta genom att skriva in en kort anslutningskod.
 - [ ] Ange anropsnamn vid anslutning.
-- [ ] Se aktuell sökinsats, instruktioner och tilldelad zon.
-- [ ] Se zoner, zonstatus och zoninstruktioner på karta.
+- [ ] Se aktuell sökinsats, instruktioner och tilldelad sektor.
+- [ ] Se sektorer, sektorstatus och sektorinstruktioner på karta.
 - [ ] Växla mellan tillgängliga karttyper.
 
 ### Spårning
@@ -147,8 +147,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Synkronisera spår och punkter manuellt som standard.
 - [ ] Visa om data väntar på synkronisering, synkroniseras, är synkad eller har synkroniseringsfel.
 - [ ] Återuppta en avbruten synkronisering.
-- [ ] Hämta nya zoner och gemensamt underlag från servern.
-- [ ] Se andra deltagares spår, punkter och zoner enligt insatsens behörigheter.
+- [ ] Hämta nya sektorer och gemensamt underlag från servern.
+- [ ] Se andra deltagares spår, punkter och sektorer enligt insatsens behörigheter.
 - [ ] Aktivera automatisk synkronisering som alternativ.
 - [ ] Begränsa automatisk synkronisering till exempelvis Wi-Fi eller laddning.
 - [ ] Arbeta med kartor utan internet genom förladdat kartunderlag.

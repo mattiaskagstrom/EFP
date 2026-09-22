@@ -38,7 +38,7 @@ Databasen ska stödja:
 
 - geografiska punkter
 - linjer och GPS-spår
-- polygoner och sökzoner
+- polygoner och söksektorer
 - avståndsberäkningar
 - överlappnings- och innehållsfrågor
 - spatiala index

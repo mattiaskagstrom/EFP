@@ -38,7 +38,7 @@ app.UseCors();
 app.MapOpenApi();
 app.MapHealthChecks("/health");
 app.MapInvestigationEndpoints();
-app.MapZoneEndpoints();
+app.MapSectorEndpoints();
 app.MapReferencePointEndpoints();
 app.MapImportExportEndpoints();
 app.Run();

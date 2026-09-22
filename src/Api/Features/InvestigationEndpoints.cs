@@ -12,7 +12,7 @@ public static class InvestigationEndpoints
         group.MapGet("", async (EfpDbContext db, CancellationToken ct) => Results.Ok(await db.Investigations.AsNoTracking().OrderByDescending(x => x.UpdatedAt).ToListAsync(ct)));
         group.MapGet("/{id:guid}", async (Guid id, EfpDbContext db, CancellationToken ct) =>
         {
-            var item = await db.Investigations.AsNoTracking().Include(x => x.Zones).Include(x => x.ReferencePoints).FirstOrDefaultAsync(x => x.Id == id, ct);
+            var item = await db.Investigations.AsNoTracking().Include(x => x.Sectors).Include(x => x.ReferencePoints).FirstOrDefaultAsync(x => x.Id == id, ct);
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
         group.MapPost("", async (CreateInvestigationRequest request, EfpDbContext db, CancellationToken ct) =>

@@ -11,10 +11,10 @@ test('@critical user can create and open an investigation', async ({ page }) => 
   await page.getByPlaceholder('Namn på ny sökinsats').fill(`E2E ${Date.now()}`);
   await page.getByRole('button', { name: 'Skapa sökinsats' }).click();
   await expect(page.getByRole('button', { name: 'Spara ändringar' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Zoner', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sektorer', exact: true })).toBeVisible();
 });
 
-test('@full zone panel can be collapsed and searched', async ({ page }) => {
+test('@full sector panel can be collapsed and searched', async ({ page }) => {
   await page.goto('/');
   let investigation = page.locator('.investigation-list button').first();
   if (await page.locator('.investigation-list button').count() === 0) {
@@ -25,8 +25,8 @@ test('@full zone panel can be collapsed and searched', async ({ page }) => {
     await expect(investigation).toBeVisible();
     await investigation.click();
   }
-  await page.getByRole('button', { name: /Zoner/ }).click();
-  await expect(page.getByPlaceholder('Sök zon-namn')).toBeHidden();
-  await page.getByRole('button', { name: /Zoner/ }).click();
-  await expect(page.getByPlaceholder('Sök zon-namn')).toBeVisible();
+  await page.getByRole('button', { name: /Sektorer/ }).click();
+  await expect(page.getByPlaceholder('Sök sektor-namn')).toBeHidden();
+  await page.getByRole('button', { name: /Sektorer/ }).click();
+  await expect(page.getByPlaceholder('Sök sektor-namn')).toBeVisible();
 });

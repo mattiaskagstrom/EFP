@@ -1,23 +1,23 @@
 export type ExportFormat = {
   label: string;
-  zones: (api: string, investigationId: string) => string;
+  sectors: (api: string, investigationId: string) => string;
   tracks: (api: string, investigationId: string) => string;
 };
 
 export const exportFormats: ExportFormat[] = [
   {
     label: 'GPX',
-    zones: (api, investigationId) => `${api}/investigations/${investigationId}/zones.gpx`,
+    sectors: (api, investigationId) => `${api}/investigations/${investigationId}/sectors.gpx`,
     tracks: (api, investigationId) => `${api}/investigations/${investigationId}/tracks.gpx`,
   },
   {
     label: 'Garmin GPX',
-    zones: (api, investigationId) => `${api}/investigations/${investigationId}/zones.garmin.gpx`,
+    sectors: (api, investigationId) => `${api}/investigations/${investigationId}/sectors.garmin.gpx`,
     tracks: (api, investigationId) => `${api}/investigations/${investigationId}/tracks.garmin.gpx`,
   },
   {
     label: 'GeoJSON',
-    zones: (api, investigationId) => `${api}/investigations/${investigationId}/zones.geojson`,
+    sectors: (api, investigationId) => `${api}/investigations/${investigationId}/sectors.geojson`,
     tracks: (api, investigationId) => `${api}/investigations/${investigationId}/tracks.geojson`,
   },
 ];

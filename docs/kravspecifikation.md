@@ -23,11 +23,11 @@ Applikationen ska kunna stödja flera sökmetoder, däribland patrullsök, skall
 Ska kunna:
 
 - ansluta till en sökinsats
-- se zoner och tilldelningar
+- se sektorer och tilldelningar
 - spela in GPS-spår
 - lägga metadata på spår
 - skapa punkter med metadata
-- se gemensamma spår, punkter och zoner enligt behörighet
+- se gemensamma spår, punkter och sektorer enligt behörighet
 - importera och exportera GPX
 - synkronisera manuellt eller automatiskt
 
@@ -37,7 +37,7 @@ Ska kunna:
 
 - skapa och administrera sökinsatser
 - skapa QR-kod och kort anslutningskod
-- lägga upp, redigera och tilldela sökzoner
+- lägga upp, redigera och tilldela söksektorer
 - se alla inskickade spår och punkter
 - redigera eller komplettera metadata
 - importera och exportera GPX
@@ -101,17 +101,17 @@ En punkt ska kunna innehålla:
 
 Exempel på kategorier är fynd, observation, person, föremål, spår, fordon, risk/hinder och övrigt.
 
-### Zoner
+### Sektorer
 
 Mobilappen ska kunna visa:
 
-- tilldelade zoner
-- zonens gränser
-- zonens namn och status
+- tilldelade sektorer
+- sektorns gränser
+- sektorns namn och status
 - instruktioner
-- vilka zoner som är färdiga, pågående eller ej påbörjade
+- vilka sektorer som är färdiga, pågående eller ej påbörjade
 
-Zoner ska kunna beskrivas med sökmetod, segmentidentitet, prioritet, tilldelad resurs och eventuella instruktioner.
+Sektorer ska kunna beskrivas med sökmetod, segmentidentitet, prioritet, tilldelad resurs och eventuella instruktioner.
 
 ## 4. Kartor
 
@@ -134,22 +134,22 @@ Synkronisering ska hantera avbrott, dubbletter, konflikter och bekräftelse på 
 
 ## 6. GPX-import och export
 
-Systemet ska kunna importera och exportera GPS-spår och punkter i GPX-format. Zoner ska kunna exporteras och importeras som polygoner där formatet stöder detta, eller via ett kompletterande standardformat.
+Systemet ska kunna importera och exportera GPS-spår och punkter i GPX-format. Sektorer ska kunna exporteras och importeras som polygoner där formatet stöder detta, eller via ett kompletterande standardformat.
 
 Vid import bör användaren kunna förhandsgranska innehållet, välja objekt, koppla det till en sökinsats och upptäcka dubbletter.
 
-Vid export bör användaren kunna välja enskilda spår, flera spår, punkter, zoner, hela sökinsatsen, tidsintervall eller användare/patrull.
+Vid export bör användaren kunna välja enskilda spår, flera spår, punkter, sektorer, hela sökinsatsen, tidsintervall eller användare/patrull.
 
 ## 7. Webbaserat administrationsgränssnitt
 
 Administratören ska kunna:
 
 - skapa sökinsats med namn, beskrivning och tidsperiod
-- rita, redigera och tilldela zoner
-- ändra zonstatus
+- rita, redigera och tilldela sektorer
+- ändra sektorstatus
 - skapa, återkalla och förnya QR-kod och anslutningskod
 - visa alla spår och punkter på karta
-- filtrera på tid, användare, patrull, zon och status
+- filtrera på tid, användare, patrull, sektor och status
 - importera och exportera GPX
 - arkivera sökinsatser
 
@@ -165,9 +165,9 @@ Behörighetsmodellen ska tydligt definiera om användare får se egna spår, pat
 
 ## 9. Framtida funktioner
 
-### Automatisk zonfördelning enligt MSO
+### Automatisk sektorfördelning enligt MSO
 
-Systemet ska på sikt kunna föreslå eller generera en zonindelning utifrån den eftersöktes MSO-profilering och insatsens planeringsdata.
+Systemet ska på sikt kunna föreslå eller generera en sektorindelning utifrån den eftersöktes MSO-profilering och insatsens planeringsdata.
 
 Indata ska kunna omfatta:
 
@@ -192,7 +192,7 @@ Funktionen ska kunna:
 - låta insatsadministratören redigera förslaget innan publicering
 - spara vilken version av profilen och vilka indata som användes
 
-Automatisk zonfördelning ska vara ett beslutsstöd. Den får inte automatiskt publicera eller ersätta insatsledningens bedömning utan uttryckligt godkännande.
+Automatisk sektorfördelning ska vara ett beslutsstöd. Den får inte automatiskt publicera eller ersätta insatsledningens bedömning utan uttryckligt godkännande.
 
 ### In- och utstämpling
 
@@ -206,7 +206,7 @@ Automatisk zonfördelning ska vara ett beslutsstöd. Den får inte automatiskt p
 ### Schemaläggning
 
 - skapa arbetspass
-- tilldela personer till pass och zoner
+- tilldela personer till pass och sektorer
 - visa bemanning
 - skicka påminnelser
 - hantera byten och frånvaro

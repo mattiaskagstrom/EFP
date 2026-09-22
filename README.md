@@ -57,7 +57,7 @@ pnpm install
 pnpm --dir src/Admin dev
 ```
 
-Adminvyn använder OpenStreetMap och kan skapa sökinsatser, rita zoner samt exportera zoner som GeoJSON.
+Adminvyn använder OpenStreetMap och kan skapa sökinsatser, rita sektorer samt exportera sektorer som GeoJSON.
 
 ### Starta hela utvecklingsmiljön
 

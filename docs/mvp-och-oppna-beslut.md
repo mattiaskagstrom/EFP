@@ -5,10 +5,10 @@
 En första version bör fokusera på ett komplett men avgränsat arbetsflöde:
 
 1. Administratören skapar en sökinsats i webbgränssnittet.
-2. Administratören skapar zoner på karta.
+2. Administratören skapar sektorer på karta.
 3. Systemet skapar QR-kod och kort anslutningskod.
 4. Deltagaren ansluter via mobilappen.
-5. Appen visar karta och zoner.
+5. Appen visar karta och sektorer.
 6. Användaren spelar in GPS-spår offline.
 7. Användaren lägger till punkter med metadata.
 8. Användaren synkroniserar manuellt.
@@ -21,7 +21,7 @@ En första version bör fokusera på ett komplett men avgränsat arbetsflöde:
 - offlinekartor
 - avancerad behörighetsmodell
 - foton på punkter
-- zon- och patrulltilldelning
+- sektor- och patrulltilldelning
 - närvaro och in-/utstämpling
 - schemaläggning
 - pushmeddelanden
@@ -36,9 +36,9 @@ Följande frågor behöver beslutas innan detaljdesign och utveckling:
 3. Ska användaren behöva ange namn, eller räcker anropsnamn/patrullnamn?
 4. Hur länge ska sökinsatser och personuppgifter sparas?
 5. Vilka kartkällor får och ska användas?
-6. Ska zoner tilldelas individer, patruller eller båda?
+6. Ska sektorer tilldelas individer, patruller eller båda?
 7. Ska anslutningskoder vara tidsbegränsade?
-8. Vilket kompletterande format ska användas om GPX inte räcker för zonpolygoner?
+8. Vilket kompletterande format ska användas om GPX inte räcker för sektorpolygoner?
 9. Ska bilder ingå i första versionen?
 10. Ska systemet kunna användas helt utan konto, med sökinsatsens kod som enda anslutning?
 11. Vilka regler ska gälla för konfliktlösning vid samtidiga ändringar?

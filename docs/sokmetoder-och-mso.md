@@ -25,7 +25,7 @@ Skallgångssök ska kunna representeras som en sökmetod där flera sökresurser
 Systemet ska kunna hantera:
 
 - sökformation eller grupp
-- segment och zoner
+- segment och sektorer
 - resurs- och deltagartilldelning
 - start och slut
 - status
@@ -43,12 +43,12 @@ Systemet ska kunna:
 
 - registrera ledstänger som linjegeometrier
 - importera ledstänger från kart- eller GIS-underlag där det är möjligt
-- koppla ledstänger till zoner och segment
+- koppla ledstänger till sektorer och segment
 - ange prioritet och status
 - ange ansvarig sökresurs
 - visa genomförd sträcka längs ledstången
 - markera observationer och fynd längs ledstången
-- inkludera ledstänger i framtida automatisk zonfördelning
+- inkludera ledstänger i framtida automatisk sektorfördelning
 
 ## 2. Centrala MSO-förkortningar
 
@@ -120,9 +120,9 @@ Hela det geografiska område inom vilket sökningen genomförs.
 
 ## 4. Krav på MSO-stöd
 
-Applikationen ska kunna lagra och visa PLS, LKP och IPP på karta. Dessa objekt ska kunna användas som indata vid manuell planering och framtida automatisk zonfördelning.
+Applikationen ska kunna lagra och visa PLS, LKP och IPP på karta. Dessa objekt ska kunna användas som indata vid manuell planering och framtida automatisk sektorfördelning.
 
-Systemet bör kunna visa POA och POD på zon- eller segmentnivå, men ska tydligt skilja mellan inmatade värden, manuella bedömningar och beräknade förslag.
+Systemet bör kunna visa POA och POD på sektor- eller segmentnivå, men ska tydligt skilja mellan inmatade värden, manuella bedömningar och beräknade förslag.
 
 Automatiska förslag ska alltid kunna granskas, redigeras och godkännas av behörig insatsadministratör.
 

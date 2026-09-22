@@ -6,43 +6,43 @@ using NetTopologySuite.Geometries;
 
 namespace Efp.Api.Features;
 
-public static class ZoneEndpoints
+public static class SectorEndpoints
 {
-    public static IEndpointRouteBuilder MapZoneEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapSectorEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}/zones");
+        var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}/sectors");
         group.MapGet("", async (Guid investigationId, EfpDbContext db, CancellationToken ct) =>
         {
-            var zones = await db.Zones.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
-            return Results.Ok(zones.Select(ToResponse));
+            var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
+            return Results.Ok(sectors.Select(ToResponse));
         });
-        group.MapPost("", async (Guid investigationId, ZoneRequest request, EfpDbContext db, CancellationToken ct) =>
+        group.MapPost("", async (Guid investigationId, SectorRequest request, EfpDbContext db, CancellationToken ct) =>
         {
             if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
             if (request.Geometry is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = ["Geometry is required."] });
             if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
             if (!TryCreateGeometry(request.Geometry, out var geometry, out var error)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = [error] });
-            var zone = new Zone { InvestigationId = investigationId, Name = request.Name.Trim(), Instructions = request.Instructions, Status = request.Status, SearchMethod = request.SearchMethod, Priority = request.Priority, AssignedGroup = request.AssignedGroup, Searched = request.Searched, SearchedAt = request.SearchedAt, Points = request.Points, ShowName = request.ShowName, ShowArea = request.ShowArea, Poa = request.Poa, Geometry = geometry };
-            db.Zones.Add(zone); await db.SaveChangesAsync(ct);
-            return Results.Created($"/api/v1/investigations/{investigationId}/zones/{zone.Id}", ToResponse(zone));
+            var sector = new Sector { InvestigationId = investigationId, Name = request.Name.Trim(), Instructions = request.Instructions, Status = request.Status, SearchMethod = request.SearchMethod, Priority = request.Priority, AssignedGroup = request.AssignedGroup, Searched = request.Searched, SearchedAt = request.SearchedAt, Points = request.Points, ShowName = request.ShowName, ShowArea = request.ShowArea, Poa = request.Poa, Geometry = geometry };
+            db.Sectors.Add(sector); await db.SaveChangesAsync(ct);
+            return Results.Created($"/api/v1/investigations/{investigationId}/sectors/{sector.Id}", ToResponse(sector));
         });
-        group.MapPut("/{zoneId:guid}", async (Guid investigationId, Guid zoneId, ZoneRequest request, EfpDbContext db, CancellationToken ct) =>
+        group.MapPut("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, SectorRequest request, EfpDbContext db, CancellationToken ct) =>
         {
-            var zone = await db.Zones.FirstOrDefaultAsync(x => x.Id == zoneId && x.InvestigationId == investigationId, ct);
-            if (zone is null) return Results.NotFound();
+            var sector = await db.Sectors.FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
+            if (sector is null) return Results.NotFound();
             if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
             if (!TryCreateGeometry(request.Geometry, out var geometry, out var error)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = [error] });
-            zone.Name = request.Name.Trim(); zone.Instructions = request.Instructions; zone.Status = request.Status; zone.SearchMethod = request.SearchMethod; zone.Priority = request.Priority; zone.AssignedGroup = request.AssignedGroup; zone.Searched = request.Searched; zone.SearchedAt = request.SearchedAt; zone.Points = request.Points; zone.ShowName = request.ShowName; zone.ShowArea = request.ShowArea; zone.Poa = request.Poa; zone.Geometry = geometry; zone.UpdatedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync(ct); return Results.Ok(ToResponse(zone));
+            sector.Name = request.Name.Trim(); sector.Instructions = request.Instructions; sector.Status = request.Status; sector.SearchMethod = request.SearchMethod; sector.Priority = request.Priority; sector.AssignedGroup = request.AssignedGroup; sector.Searched = request.Searched; sector.SearchedAt = request.SearchedAt; sector.Points = request.Points; sector.ShowName = request.ShowName; sector.ShowArea = request.ShowArea; sector.Poa = request.Poa; sector.Geometry = geometry; sector.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct); return Results.Ok(ToResponse(sector));
         });
-        group.MapDelete("/{zoneId:guid}", async (Guid investigationId, Guid zoneId, EfpDbContext db, CancellationToken ct) =>
+        group.MapDelete("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, EfpDbContext db, CancellationToken ct) =>
         {
-            var zone = await db.Zones.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == zoneId && x.InvestigationId == investigationId, ct);
-            if (zone is null) return Results.NotFound();
-            if (zone.IsDeleted) return Results.NoContent();
-            zone.IsDeleted = true;
-            zone.DeletedAt = DateTimeOffset.UtcNow;
-            zone.UpdatedAt = DateTimeOffset.UtcNow;
+            var sector = await db.Sectors.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
+            if (sector is null) return Results.NotFound();
+            if (sector.IsDeleted) return Results.NoContent();
+            sector.IsDeleted = true;
+            sector.DeletedAt = DateTimeOffset.UtcNow;
+            sector.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct); return Results.NoContent();
         });
         return endpoints;
@@ -71,28 +71,28 @@ public static class ZoneEndpoints
         return error.Length == 0;
     }
 
-    private static object ToResponse(Zone zone) => new
+    private static object ToResponse(Sector sector) => new
     {
-        zone.Id,
-        zone.InvestigationId,
-        zone.Name,
-        zone.Instructions,
-        zone.Status,
-        zone.SearchMethod,
-        zone.Priority,
-        zone.AssignedGroup,
-        zone.Searched,
-        zone.SearchedAt,
-        zone.Points,
-        zone.ShowName,
-        zone.ShowArea,
-        zone.Poa,
-        AreaKm2 = CalculateSize(zone.Geometry),
-        zone.UpdatedAt,
+        sector.Id,
+        sector.InvestigationId,
+        sector.Name,
+        sector.Instructions,
+        sector.Status,
+        sector.SearchMethod,
+        sector.Priority,
+        sector.AssignedGroup,
+        sector.Searched,
+        sector.SearchedAt,
+        sector.Points,
+        sector.ShowName,
+        sector.ShowArea,
+        sector.Poa,
+        AreaKm2 = CalculateSize(sector.Geometry),
+        sector.UpdatedAt,
         Geometry = new
         {
-            Type = zone.Geometry.GeometryType,
-            Coordinates = zone.Geometry.Coordinates.Select(coordinate => new[] { coordinate.X, coordinate.Y }).ToArray(),
+            Type = sector.Geometry.GeometryType,
+            Coordinates = sector.Geometry.Coordinates.Select(coordinate => new[] { coordinate.X, coordinate.Y }).ToArray(),
         },
     };
 
@@ -119,5 +119,5 @@ public static class ZoneEndpoints
     }
 }
 
-public sealed record ZoneRequest(string Name, string? Instructions, ZoneStatus Status, SearchMethod SearchMethod, int Priority, string? AssignedGroup, GeoJsonGeometry Geometry, bool Searched = false, DateTimeOffset? SearchedAt = null, int Points = 0, bool ShowName = false, bool ShowArea = false, double? Poa = null);
+public sealed record SectorRequest(string Name, string? Instructions, SectorStatus Status, SearchMethod SearchMethod, int Priority, string? AssignedGroup, GeoJsonGeometry Geometry, bool Searched = false, DateTimeOffset? SearchedAt = null, int Points = 0, bool ShowName = false, bool ShowArea = false, double? Poa = null);
 public sealed record GeoJsonGeometry(double[][] Coordinates, string? Type = null);

@@ -11,21 +11,21 @@ import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import 'leaflet/dist/leaflet.css';
 import './styles.css';
-import { filterZonesByName } from './zoneSearch';
+import { filterSectorsByName } from './sectorSearch';
 import { InvestigationEditButton } from './InvestigationEditButton';
 import { exportFormats } from './exportFormats';
 
 type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
-type Zone = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
+type Sector = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
 type Track = { id: string; callsign?: string; sourceFile?: string; pod?: number | null; geometry: { type: 'LineString'; coordinates: number[][] } };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
 type ActiveTool = 'none' | DrawMode | 'Text' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
 type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
-type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; zoneId?: string; zone?: Partial<Zone>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
-type ZoneDetails = Pick<Zone, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeZone: (zoneId: string) => void; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; sectorId?: string; sector?: Partial<Sector>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
+type SectorDetails = Pick<Sector, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 const center: [number, number] = [59.33, 18.06];
@@ -37,9 +37,9 @@ const investigationStatusLabel = (status: string) => ({ Planned: 'Planerad', Act
 function App() {
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
   const [selected, setSelected] = useState<Investigation | null>(null);
-  const [zones, setZones] = useState<Zone[]>([]);
+  const [sectors, setSectors] = useState<Sector[]>([]);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
-  const [zoneDrafts, setZoneDrafts] = useState<Record<string, ZoneDetails>>({});
+  const [sectorDrafts, setSectorDrafts] = useState<Record<string, SectorDetails>>({});
   const [tracks, setTracks] = useState<Track[]>([]);
   const [visibleTracks, setVisibleTracks] = useState<Record<string, boolean>>({});
   const [name, setName] = useState('');
@@ -49,12 +49,12 @@ function App() {
   const [activeTool, setActiveTool] = useState<ActiveTool>('none');
   const [mapType, setMapType] = useState<MapType>('osm');
   const [error, setError] = useState('');
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
-  const [expandedZoneId, setExpandedZoneId] = useState<string | null>(null);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
+  const [expandedSectorId, setExpandedSectorId] = useState<string | null>(null);
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
-  const [hiddenZoneIds, setHiddenZoneIds] = useState<Record<string, boolean>>({});
-  const [zonesExpanded, setZonesExpanded] = useState(true);
-  const [zoneSearch, setZoneSearch] = useState('');
+  const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
+  const [sectorsExpanded, setSectorsExpanded] = useState(true);
+  const [sectorSearch, setSectorSearch] = useState('');
   const [saveConfirmation, setSaveConfirmation] = useState(false);
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
   const [investigationSaving, setInvestigationSaving] = useState(false);
@@ -62,12 +62,12 @@ function App() {
   const load = async () => setInvestigations(await fetch(`${API}/investigations`).then(r => r.json()));
   useEffect(() => { void load(); }, []);
   const loadSelectedData = async (investigation: Investigation) => {
-    const [zoneResponse, trackResponse, referencePointResponse] = await Promise.all([
-      fetch(`${API}/investigations/${investigation.id}/zones`),
+    const [sectorResponse, trackResponse, referencePointResponse] = await Promise.all([
+      fetch(`${API}/investigations/${investigation.id}/sectors`),
       fetch(`${API}/investigations/${investigation.id}/tracks.geojson`),
       fetch(`${API}/investigations/${investigation.id}/reference-points`),
     ]);
-    const loadedZones = zoneResponse.ok ? await zoneResponse.json() : [];
+    const loadedSectors = sectorResponse.ok ? await sectorResponse.json() : [];
     const trackCollection = trackResponse.ok ? await trackResponse.json() : { features: [] };
     const loadedReferencePoints = referencePointResponse.ok ? await referencePointResponse.json() : [];
     const loadedTracks = (trackCollection.features ?? []).filter((feature: any) => feature?.geometry?.type === 'LineString' && Array.isArray(feature.geometry.coordinates)).map((feature: any) => ({
@@ -76,16 +76,16 @@ function App() {
       sourceFile: feature.properties?.sourceFile,
       geometry: feature.geometry,
     })) as Track[];
-    setZones(loadedZones.map((zone: Zone) => {
-      const geometryType = zone.geometry?.type ?? (zone.geometry?.coordinates?.length === 2 ? 'LineString' : 'Polygon');
-      return { ...zone, geometry: { ...zone.geometry, type: geometryType }, ...(geometryType === 'LineString' ? { lengthKm: zone.areaKm2 ?? 0 } : {}) };
+    setSectors(loadedSectors.map((sector: Sector) => {
+      const geometryType = sector.geometry?.type ?? (sector.geometry?.coordinates?.length === 2 ? 'LineString' : 'Polygon');
+      return { ...sector, geometry: { ...sector.geometry, type: geometryType }, ...(geometryType === 'LineString' ? { lengthKm: sector.areaKm2 ?? 0 } : {}) };
     }));
-    setZoneDrafts(Object.fromEntries(loadedZones.map((zone: Zone) => [zone.id, { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null }])));
+    setSectorDrafts(Object.fromEntries(loadedSectors.map((sector: Sector) => [sector.id, { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null }])));
     setTracks(loadedTracks);
     setReferencePoints(loadedReferencePoints);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
   };
-  useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setZones([]); setReferencePoints([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
+  useEffect(() => { setHiddenSectorIds({}); setSectorsExpanded(true); setSectorSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => {
     if (!saveConfirmation) return;
@@ -109,25 +109,25 @@ function App() {
     return () => { window.removeEventListener('focus', repaintAfterFileDialog); document.removeEventListener('visibilitychange', repaintAfterFileDialog); };
   }, []);
   useEffect(() => {
-    if (!selectedZoneId) return;
-    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.zone-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
-  }, [selectedZoneId]);
+    if (!selectedSectorId) return;
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.sector-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }, [selectedSectorId]);
   useEffect(() => {
-    const onZoneCreated = (event: Event) => {
-      const zone = (event as CustomEvent<Zone>).detail;
-      if (zone) addPendingZone(zone);
+    const onSectorCreated = (event: Event) => {
+      const sector = (event as CustomEvent<Sector>).detail;
+      if (sector) addPendingSector(sector);
     };
-    const onZoneRemoved = (event: Event) => {
-      const zoneId = (event as CustomEvent<string>).detail;
-      if (!zoneId) return;
-      setZones(current => current.filter(zone => zone.id !== zoneId));
-      setZoneDrafts(current => { const next = { ...current }; delete next[zoneId]; return next; });
-      setSelectedZoneId(current => current === zoneId ? null : current);
-      setExpandedZoneId(current => current === zoneId ? null : current);
+    const onSectorRemoved = (event: Event) => {
+      const sectorId = (event as CustomEvent<string>).detail;
+      if (!sectorId) return;
+      setSectors(current => current.filter(sector => sector.id !== sectorId));
+      setSectorDrafts(current => { const next = { ...current }; delete next[sectorId]; return next; });
+      setSelectedSectorId(current => current === sectorId ? null : current);
+      setExpandedSectorId(current => current === sectorId ? null : current);
     };
-    window.addEventListener('efp:zone-created', onZoneCreated);
-    window.addEventListener('efp:zone-removed', onZoneRemoved);
-    return () => { window.removeEventListener('efp:zone-created', onZoneCreated); window.removeEventListener('efp:zone-removed', onZoneRemoved); };
+    window.addEventListener('efp:sector-created', onSectorCreated);
+    window.addEventListener('efp:sector-removed', onSectorRemoved);
+    return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); };
   }, []);
 
   useEffect(() => {
@@ -187,13 +187,13 @@ function App() {
     const created = await response.json() as ReferencePoint;
     setReferencePoints(current => [...current, created]);
   };
-  const saveLatestZone = async () => {
+  const saveLatestSector = async () => {
     if (!selected) return setError('Välj en sökinsats först.');
     const coordinates = editor?.latestPolygon();
     if (!coordinates) return setError('Rita eller välj en polygon/fyrkant först.');
-    const response = await fetch(`${API}/investigations/${selected.id}/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `Zon ${zones.length + 1}`, status: 'NotStarted', searchMethod: 'Patrol', priority: zones.length + 1, geometry: { coordinates } }) });
+    const response = await fetch(`${API}/investigations/${selected.id}/sectors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: `Sektor ${sectors.length + 1}`, status: 'NotStarted', searchMethod: 'Patrol', priority: sectors.length + 1, geometry: { coordinates } }) });
     if (!response.ok) return setError(await response.text());
-    setZones(await fetch(`${API}/investigations/${selected.id}/zones`).then(r => r.json()));
+    setSectors(await fetch(`${API}/investigations/${selected.id}/sectors`).then(r => r.json()));
   };
   const importGpx = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -211,13 +211,13 @@ function App() {
       setError(cause instanceof Error ? cause.message : 'GPX-importen misslyckades. Kontrollera att filerna innehåller minst två spårpunkter.');
     }
   };
-  const importZoneGpx = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importSectorGpx = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !selected) return;
     setError('');
     const form = new FormData(); form.append('file', file);
-    const response = await fetch(`${API}/investigations/${selected.id}/zones/import`, { method: 'POST', body: form });
+    const response = await fetch(`${API}/investigations/${selected.id}/sectors/import`, { method: 'POST', body: form });
     if (!response.ok) { setError(await response.text()); return; }
     await loadSelectedData(selected);
   };
@@ -238,40 +238,40 @@ function App() {
     editor?.discard();
     await loadSelectedData(selected);
     setActiveTool('none');
-    setSelectedZoneId(null);
-    setExpandedZoneId(null);
+    setSelectedSectorId(null);
+    setExpandedSectorId(null);
     setError('');
   };
-  const updateZoneDraft = (zoneId: string, details: Partial<ZoneDetails>) => {
-    setZoneDrafts(current => ({ ...current, [zoneId]: { ...current[zoneId], ...details } }));
-    editor?.updateZoneDetails(zoneId, { ...zoneDrafts[zoneId], ...details });
+  const updateSectorDraft = (sectorId: string, details: Partial<SectorDetails>) => {
+    setSectorDrafts(current => ({ ...current, [sectorId]: { ...current[sectorId], ...details } }));
+    editor?.updateSectorDetails(sectorId, { ...sectorDrafts[sectorId], ...details });
   };
-  const deleteZone = async (zone: Zone) => {
-    if (!selected || !window.confirm(`Är du säker på att du vill radera zonen "${zone.name}"?`)) return;
+  const deleteSector = async (sector: Sector) => {
+    if (!selected || !window.confirm(`Är du säker på att du vill radera sektorn "${sector.name}"?`)) return;
     setError('');
-    if (zone.id.startsWith('draft-')) {
-      editor?.removeZone(zone.id);
-      setZones(current => current.filter(item => item.id !== zone.id));
-      setZoneDrafts(current => { const next = { ...current }; delete next[zone.id]; return next; });
-      if (selectedZoneId === zone.id) setSelectedZoneId(null);
-      if (expandedZoneId === zone.id) setExpandedZoneId(null);
+    if (sector.id.startsWith('draft-')) {
+      editor?.removeSector(sector.id);
+      setSectors(current => current.filter(item => item.id !== sector.id));
+      setSectorDrafts(current => { const next = { ...current }; delete next[sector.id]; return next; });
+      if (selectedSectorId === sector.id) setSelectedSectorId(null);
+      if (expandedSectorId === sector.id) setExpandedSectorId(null);
       return;
     }
-    const response = await fetch(`${API}/investigations/${selected.id}/zones/${zone.id}`, { method: 'DELETE' });
-    if (!response.ok) { setError((await response.text()) || `Kunde inte radera zonen (HTTP ${response.status}).`); return; }
-    if (selectedZoneId === zone.id) setSelectedZoneId(null);
-    if (expandedZoneId === zone.id) setExpandedZoneId(null);
+    const response = await fetch(`${API}/investigations/${selected.id}/sectors/${sector.id}`, { method: 'DELETE' });
+    if (!response.ok) { setError((await response.text()) || `Kunde inte radera sektorn (HTTP ${response.status}).`); return; }
+    if (selectedSectorId === sector.id) setSelectedSectorId(null);
+    if (expandedSectorId === sector.id) setExpandedSectorId(null);
     await loadSelectedData(selected);
   };
-  const toggleZoneVisibility = (zoneId: string) => setHiddenZoneIds(current => ({ ...current, [zoneId]: !current[zoneId] }));
-  const selectZone = (zoneId: string) => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); };
-  const addPendingZone = (zone: Zone) => {
-    setZones(current => current.some(item => item.id === zone.id)
-      ? current.map(item => item.id === zone.id ? zone : item)
-      : [...current, zone]);
-    setZoneDrafts(current => ({ ...current, [zone.id]: { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null } }));
-    setSelectedZoneId(zone.id);
-    setExpandedZoneId(zone.id);
+  const toggleSectorVisibility = (sectorId: string) => setHiddenSectorIds(current => ({ ...current, [sectorId]: !current[sectorId] }));
+  const selectSector = (sectorId: string) => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); };
+  const addPendingSector = (sector: Sector) => {
+    setSectors(current => current.some(item => item.id === sector.id)
+      ? current.map(item => item.id === sector.id ? sector : item)
+      : [...current, sector]);
+    setSectorDrafts(current => ({ ...current, [sector.id]: { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null } }));
+    setSelectedSectorId(sector.id);
+    setExpandedSectorId(sector.id);
   };
 
   const chooseTool = (tool: ActiveTool, action: () => void) => { if (activeTool === tool) { setActiveTool('none'); editor?.stop(); return; } setActiveTool(tool); action(); };
@@ -281,12 +281,12 @@ function App() {
     satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri' },
   };
   const selectedMapLayer = mapLayers[mapType];
-  const matchingZones = filterZonesByName(zones, zoneSearch, Object.fromEntries(Object.entries(zoneDrafts).map(([id, draft]) => [id, draft.name])));
-  const nextZoneName = () => {
-    const names = new Set(zones.map(zone => (zoneDrafts[zone.id]?.name ?? zone.name).trim().toLocaleLowerCase()));
+  const matchingSectors = filterSectorsByName(sectors, sectorSearch, Object.fromEntries(Object.entries(sectorDrafts).map(([id, draft]) => [id, draft.name])));
+  const nextSectorName = () => {
+    const names = new Set(sectors.map(sector => (sectorDrafts[sector.id]?.name ?? sector.name).trim().toLocaleLowerCase()));
     let number = 1;
-    while (names.has(`zon ${number}`)) number += 1;
-    return `Zon ${number}`;
+    while (names.has(`sektor ${number}`)) number += 1;
+    return `Sektor ${number}`;
   };
   const updateTrackPod = async (track: Track, value: string) => {
     if (!selected) return;
@@ -311,21 +311,21 @@ function App() {
       <aside className="investigation-sidebar">
         <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button>
         <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : 'Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>Släng ändringar</button></section>
-        <section className="sidebar-section zones-section">
-          <button className="zones-section-toggle" onClick={() => setZonesExpanded(current => !current)}><h3>Zoner</h3><span aria-hidden="true">{zonesExpanded ? '▴' : '▾'}</span></button>
-          {zonesExpanded && <><input className="zone-search" type="search" value={zoneSearch} onChange={event => setZoneSearch(event.target.value)} placeholder="Sök zon-namn" aria-label="Sök zon-namn" />
-            {zones.length === 0 ? <p className="muted">Inga zoner i sökinsatsen.</p> : matchingZones.length === 0 ? <p className="muted">Inga zoner matchar sökningen.</p> : matchingZones.map(zone => {
-              const draft = zoneDrafts[zone.id] ?? { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null };
-              const expanded = expandedZoneId === zone.id; const hidden = hiddenZoneIds[zone.id] === true;
-              return <article className={`zone-card ${selectedZoneId === zone.id ? 'selected' : ''}`} key={zone.id}><button className="zone-card-header" onClick={() => { setSelectedZoneId(zone.id); setExpandedZoneId(expanded ? null : zone.id); }}><span>{draft.name || 'Namnlös zon'}</span><span className="zone-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
-                {expanded && <div className="zone-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateZoneDraft(zone.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateZoneDraft(zone.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateZoneDraft(zone.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateZoneDraft(zone.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateZoneDraft(zone.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateZoneDraft(zone.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateZoneDraft(zone.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifyZone(zone.id, simplifyTolerance)}>Förenkla polygon</button><div className="zone-card-actions"><button onClick={() => toggleZoneVisibility(zone.id)}>{hidden ? 'Visa zon i kartan' : 'Dölj zon i kartan'}</button><button className="danger-button" onClick={() => void deleteZone(zone)}>Radera zon</button></div></div>}</article>;
+        <section className="sidebar-section sectors-section">
+          <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▴' : '▾'}</span></button>
+          {sectorsExpanded && <><input className="sector-search" type="search" value={sectorSearch} onChange={event => setSectorSearch(event.target.value)} placeholder="Sök sektor-namn" aria-label="Sök sektor-namn" />
+            {sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : matchingSectors.length === 0 ? <p className="muted">Inga sektorer matchar sökningen.</p> : matchingSectors.map(sector => {
+              const draft = sectorDrafts[sector.id] ?? { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null };
+              const expanded = expandedSectorId === sector.id; const hidden = hiddenSectorIds[sector.id] === true;
+              return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''}`} key={sector.id}><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
+                {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
             })}</>}
         </section>
-        <details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Zoner</strong>{exportFormats.map(format => <a key={`zone-${format.label}`} href={format.zones(API, selected.id)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={format.tracks(API, selected.id)}>{format.label}</a>)}</div></details>
-        <section className="sidebar-section"><h3>Importera zoner från GPX</h3><input id="gpx-zone-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importZoneGpx(event)} /><label className="file-button" htmlFor="gpx-zone-import">Välj zon-GPX-fil</label></section>
+        <details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={format.sectors(API, selected.id)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={format.tracks(API, selected.id)}>{format.label}</a>)}</div></details>
+        <section className="sidebar-section"><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section>
         <section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length > 0 && <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span><input aria-label={`POD för ${track.sourceFile ?? track.callsign ?? 'spår'}`} type="number" min="0" max="100" step="0.1" value={track.pod ?? ''} placeholder="POD %" onChange={event => void updateTrackPod(track, event.target.value)} /></label>)}</div>}</section>
       </aside>
-      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} zones={zones} nextZoneName={nextZoneName} activeTool={activeTool} onToolChange={setActiveTool} selectedZoneId={selectedZoneId} hiddenZoneIds={hiddenZoneIds} onZoneSelect={zoneId => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
+      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
   </main>;
 }
@@ -424,15 +424,15 @@ function limitTrackCoordinates(coordinates: number[][], maximum = 5000): number[
   return Array.from({ length: maximum }, (_, index) => coordinates[Math.round(index * step)]);
 }
 
-function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, activeTool, onToolChange, selectedZoneId, hiddenZoneIds, onZoneSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; zones: Zone[]; nextZoneName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedZoneId: string | null; hiddenZoneIds: Record<string, boolean>; onZoneSelect: (zoneId: string) => void; onReady: (api: EditorApi) => void }) {
+function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorName, activeTool, onToolChange, selectedSectorId, hiddenSectorIds, onSectorSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; sectors: Sector[]; nextSectorName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedSectorId: string | null; hiddenSectorIds: Record<string, boolean>; onSectorSelect: (sectorId: string) => void; onReady: (api: EditorApi) => void }) {
   const map = useMap();
-  const persistedZoneKey = JSON.stringify(zones.filter(zone => !zone.id.startsWith('draft-')));
+  const persistedSectorKey = JSON.stringify(sectors.filter(sector => !sector.id.startsWith('draft-')));
   const history = useRef<DrawingSnapshot[][]>([[]]);
   const historyIndex = useRef(0);
   const restoring = useRef(false);
   const textLayers = useRef<L.Marker[]>([]);
-  const serverZoneLayers = useRef<any[]>([]);
-  const initialServerZoneIds = useRef<string[]>([]);
+  const serverSectorLayers = useRef<any[]>([]);
+  const initialServerSectorIds = useRef<string[]>([]);
   const serverBaselineInitialized = useRef(false);
   const textRemovalMode = useRef(false);
   const editSelectionMode = useRef(false);
@@ -447,9 +447,9 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   const settings = useRef({ color, strokeStyle });
-  const nextZoneNameRef = useRef(nextZoneName);
+  const nextSectorNameRef = useRef(nextSectorName);
   settings.current = { color, strokeStyle };
-  nextZoneNameRef.current = nextZoneName;
+  nextSectorNameRef.current = nextSectorName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   const geomanMap = map as L.Map & { pm?: any };
@@ -458,8 +458,8 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   const snapshot = (): DrawingSnapshot[] => {
     const shapes = getLayers().map((layer: any) => {
       const shape = layer instanceof L.Circle ? 'Circle' : layer.pm?.getShape?.() ?? layer.toGeoJSON().geometry.type;
-      if (shape === 'Circle') return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, radius: layer.getRadius(), zoneId: layer.__zoneId, zone: layer.__zone, style: styleFor(layer) };
-      return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, zoneId: layer.__zoneId, zone: layer.__zone, style: styleFor(layer) };
+      if (shape === 'Circle') return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, radius: layer.getRadius(), sectorId: layer.__sectorId, sector: layer.__sector, style: styleFor(layer) };
+      return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, sectorId: layer.__sectorId, sector: layer.__sector, style: styleFor(layer) };
     });
     const texts = textLayers.current.map(layer => { const position = layer.getLatLng(); return { kind: 'text' as const, text: layer.options.title ?? '', lat: position.lat, lng: position.lng }; });
     return [...shapes, ...texts];
@@ -478,7 +478,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   };
   const restore = (items: DrawingSnapshot[]) => {
     restoring.current = true; getLayers().forEach((layer: any) => layer.remove()); textLayers.current.forEach(layer => layer.remove()); textLayers.current = [];
-    const restoredDraftZones: Zone[] = [];
+    const restoredDraftSectors: Sector[] = [];
     items.forEach(item => {
       if (item.kind === 'text' && item.text && item.lat !== undefined && item.lng !== undefined) { addTextLayer(item.text, item.lat, item.lng); return; }
       if (!item.geometry) return;
@@ -487,16 +487,16 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
       else if (item.shape === 'Rectangle') layer = L.rectangle(toLatLngs(coordinates[0]), options).addTo(map);
       else if (item.shape === 'Line' || geometry.type === 'LineString') layer = L.polyline(toLatLngs(coordinates), options).addTo(map);
       else layer = L.polygon(toLatLngs(coordinates[0]), options).addTo(map);
-      if (item.zoneId) layer.__zoneId = item.zoneId;
-      if (item.zone) layer.__zone = item.zone;
+      if (item.sectorId) layer.__sectorId = item.sectorId;
+      if (item.sector) layer.__sector = item.sector;
       geomanMap.pm?.reInitLayer?.(layer);
-      if (item.zone) {
-        configureZoneLayer(layer);
-        if (item.zone.id?.startsWith('draft-')) restoredDraftZones.push(item.zone as Zone);
+      if (item.sector) {
+        configureSectorLayer(layer);
+        if (item.sector.id?.startsWith('draft-')) restoredDraftSectors.push(item.sector as Sector);
       }
     });
     restoring.current = false;
-    restoredDraftZones.forEach(zone => window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone })));
+    restoredDraftSectors.forEach(sector => window.dispatchEvent(new CustomEvent<Sector>('efp:sector-created', { detail: sector })));
   };
   const undo = () => { if (historyIndex.current === 0) return; historyIndex.current -= 1; restore(history.current[historyIndex.current]); onReady(api); };
   const redo = () => { if (historyIndex.current >= history.current.length - 1) return; historyIndex.current += 1; restore(history.current[historyIndex.current]); onReady(api); };
@@ -524,7 +524,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     if (!['Polygon', 'Rectangle'].includes(shape)) return null;
     return (layer.toGeoJSON().geometry as any).coordinates?.[0] ?? null;
   };
-  const getZoneCoordinates = (layer: any): number[][] | null => {
+  const getSectorCoordinates = (layer: any): number[][] | null => {
     const polygon = getPolygonCoordinates(layer);
     if (polygon) return polygon;
     const geometry = layer.toGeoJSON().geometry as any;
@@ -537,17 +537,17 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     const dy = (coordinate[1] - previous[1]) * 111.32;
     return total + Math.hypot(dx, dy);
   }, 0);
-  const updateZoneLabel = (layer: any) => {
-    const zone = layer.__zone as Zone | undefined;
-    if (!zone) return;
+  const updateSectorLabel = (layer: any) => {
+    const sector = layer.__sector as Sector | undefined;
+    if (!sector) return;
     const labels = [];
-    if (zone.showName) labels.push(escapeHtml(zone.name));
-    if (zone.geometry.type === 'LineString' && zone.showArea) labels.push(`${(zone.lengthKm ?? 0).toFixed(3)} km`);
-    else if (zone.showArea) labels.push(`${(zone.areaKm2 ?? 0).toFixed(3)} km²`);
+    if (sector.showName) labels.push(escapeHtml(sector.name));
+    if (sector.geometry.type === 'LineString' && sector.showArea) labels.push(`${(sector.lengthKm ?? 0).toFixed(3)} km`);
+    else if (sector.showArea) labels.push(`${(sector.areaKm2 ?? 0).toFixed(3)} km²`);
     if (labels.length === 0) layer.unbindTooltip?.();
-    else layer.bindTooltip(labels.join('<br>'), { permanent: true, direction: 'center', className: 'zone-label' }).openTooltip();
+    else layer.bindTooltip(labels.join('<br>'), { permanent: true, direction: 'center', className: 'sector-label' }).openTooltip();
   };
-  const configureZoneLayer = (layer: any) => {
+  const configureSectorLayer = (layer: any) => {
     layer.on('pm:edit pm:dragend', saveHistory);
     layer.on('pm:remove', saveHistory);
     layer.on('click', (event: any) => {
@@ -555,18 +555,18 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
         event.originalEvent?.stopPropagation?.();
         return;
       }
-      if (layer.__zoneId && hiddenZoneIds[layer.__zoneId]) return;
+      if (layer.__sectorId && hiddenSectorIds[layer.__sectorId]) return;
       if (mergeSelectionMode.current) {
         event.originalEvent?.stopPropagation?.();
         if (!mergeFirst.current) {
           mergeFirst.current = layer;
           layer.setStyle({ color: '#f59e0b', weight: 6 });
-          const zoneId = layer.__zoneId ?? layer.__zone?.id;
-          if (zoneId) onZoneSelect(zoneId);
+          const sectorId = layer.__sectorId ?? layer.__sector?.id;
+          if (sectorId) onSectorSelect(sectorId);
           return;
         }
         if (mergeFirst.current === layer) return;
-        mergeZoneLayers(mergeFirst.current, layer);
+        mergeSectorLayers(mergeFirst.current, layer);
         return;
       }
       if (splitSelectionMode.current) {
@@ -574,11 +574,11 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
         event.originalEvent?.stopPropagation?.();
         splitSelectionMode.current = false;
         splitTarget.current = layer;
-        const zoneId = layer.__zoneId ?? layer.__zone?.id;
-        if (zoneId) onZoneSelect(zoneId);
+        const sectorId = layer.__sectorId ?? layer.__sector?.id;
+        if (sectorId) onSectorSelect(sectorId);
         layer.setStyle({ color: '#f59e0b', weight: 6 });
-        // Starta inte Geoman på samma klick som väljer zonen. Annars blir
-        // zonklicket samtidigt första punkten på delningslinjen.
+        // Starta inte Geoman på samma klick som väljer sektorn. Annars blir
+        // sektorklicket samtidigt första punkten på delningslinjen.
         window.setTimeout(() => {
           if (!splitTarget.current) return;
           geomanMap.pm?.enableDraw?.('Line', { pathOptions: { color: '#f59e0b', weight: 5, dashArray: '10 6' } });
@@ -592,20 +592,20 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
         layer.pm?.enable?.({ allowSelfIntersection: false });
         return;
       }
-      const zoneId = layer.__zoneId ?? layer.__zone?.id;
-      if (zoneId) onZoneSelect(zoneId);
+      const sectorId = layer.__sectorId ?? layer.__sector?.id;
+      if (sectorId) onSectorSelect(sectorId);
     });
-    updateZoneLabel(layer);
+    updateSectorLabel(layer);
   };
-  const updateZoneDetails = (zoneId: string, details: ZoneDetails) => {
-    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId || candidate.__zone?.id === zoneId);
+  const updateSectorDetails = (sectorId: string, details: SectorDetails) => {
+    const layer = getLayers().find((candidate: any) => candidate.__sectorId === sectorId || candidate.__sector?.id === sectorId);
     if (!layer) return;
-    layer.__zone = { ...layer.__zone, ...details };
-    updateZoneLabel(layer);
+    layer.__sector = { ...layer.__sector, ...details };
+    updateSectorLabel(layer);
     saveHistory();
   };
-  const simplifyZone = (zoneId: string, toleranceMeters: number) => {
-    const layer = getLayers().find((candidate: any) => candidate.__zoneId === zoneId || candidate.__zone?.id === zoneId);
+  const simplifySector = (sectorId: string, toleranceMeters: number) => {
+    const layer = getLayers().find((candidate: any) => candidate.__sectorId === sectorId || candidate.__sector?.id === sectorId);
     if (!layer) return;
     const coordinates = getPolygonCoordinates(layer);
     if (!coordinates || coordinates.length < 5) return;
@@ -613,8 +613,8 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     if (simplified.length >= coordinates.length) return;
     layer.setLatLngs([toLatLngs(simplified)]);
     layer.redraw?.();
-    layer.__zone = { ...layer.__zone, areaKm2: calculateAreaKm2(simplified) };
-    updateZoneLabel(layer);
+    layer.__sector = { ...layer.__sector, areaKm2: calculateAreaKm2(simplified) };
+    updateSectorLabel(layer);
     saveHistory();
   };
   const segmentsShareBoundary = (first: number[][], second: number[][]) => {
@@ -634,37 +634,37 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     }
     return false;
   };
-  const mergeZoneLayers = (firstLayer: any, secondLayer: any) => {
+  const mergeSectorLayers = (firstLayer: any, secondLayer: any) => {
     const firstFeature = firstLayer.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
     const secondFeature = secondLayer.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
     if (!segmentsShareBoundary(firstFeature.geometry.coordinates[0], secondFeature.geometry.coordinates[0])) {
-      window.alert('Zonerna måste vara grannar och dela en gemensam kant.');
+      window.alert('Sektorerna måste vara grannar och dela en gemensam kant.');
       return;
     }
     const merged = polygonUnion(featureCollection([firstFeature, secondFeature]) as any) as any;
     if (!merged || merged.geometry?.type !== 'Polygon') {
-      window.alert('Zonerna kunde inte kombineras till en sammanhängande zon.');
+      window.alert('Sektorerna kunde inte kombineras till en sammanhängande sektor.');
       return;
     }
-    const source = firstLayer.__zone as Zone;
+    const source = firstLayer.__sector as Sector;
     const coordinates = merged.geometry.coordinates[0] as number[][];
-    const zone: Zone = { ...source, id: `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`, name: `${source.name} + ${secondLayer.__zone?.name ?? 'zon'}`, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
+    const sector: Sector = { ...source, id: `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`, name: `${source.name} + ${secondLayer.__sector?.name ?? 'sektor'}`, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
     restoring.current = true;
     firstLayer.remove(); secondLayer.remove();
     const layer: any = L.polygon(toLatLngs(coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 }).addTo(map);
-    layer.__zone = zone; layer.__zoneId = undefined;
+    layer.__sector = sector; layer.__sectorId = undefined;
     geomanMap.pm?.reInitLayer?.(layer);
-    configureZoneLayer(layer);
+    configureSectorLayer(layer);
     restoring.current = false;
-    window.dispatchEvent(new CustomEvent<string>('efp:zone-removed', { detail: firstLayer.__zone?.id }));
-    window.dispatchEvent(new CustomEvent<string>('efp:zone-removed', { detail: secondLayer.__zone?.id }));
-    window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone }));
+    window.dispatchEvent(new CustomEvent<string>('efp:sector-removed', { detail: firstLayer.__sector?.id }));
+    window.dispatchEvent(new CustomEvent<string>('efp:sector-removed', { detail: secondLayer.__sector?.id }));
+    window.dispatchEvent(new CustomEvent<Sector>('efp:sector-created', { detail: sector }));
     mergeFirst.current = null;
     saveHistory();
     onToolChange('none');
   };
-  const splitZoneWithLine = (lineLayer: any, zoneLayer: any) => {
-    const polygon = zoneLayer.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
+  const splitSectorWithLine = (lineLayer: any, sectorLayer: any) => {
+    const polygon = sectorLayer.toGeoJSON() as GeoJSON.Feature<GeoJSON.Polygon>;
     const boundary = polygonToLine(polygon as any) as any;
     const splitLine = lineLayer.toGeoJSON() as GeoJSON.Feature<GeoJSON.LineString>;
     const lineCoordinates = splitLine.geometry.coordinates;
@@ -680,68 +680,68 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     const pieces = polygonize(featureCollection([...boundaryLines, splitLine] as any) as any) as any;
     const polygons = (pieces.features ?? []).filter((feature: any) => feature.geometry?.type === 'Polygon' && feature.geometry.coordinates?.[0]?.length >= 4);
     lineLayer.remove();
-    zoneLayer.setStyle({ color: '#dc2626', weight: 4 });
+    sectorLayer.setStyle({ color: '#dc2626', weight: 4 });
     splitTarget.current = null;
-    if (polygons.length < 2) { window.alert('Linjen måste gå genom zonen från kant till kant.'); onToolChange('none'); return; }
+    if (polygons.length < 2) { window.alert('Linjen måste gå genom sektorn från kant till kant.'); onToolChange('none'); return; }
     restoring.current = true;
-    zoneLayer.remove();
-    const source = zoneLayer.__zone as Zone;
-    const newZones: Zone[] = [];
+    sectorLayer.remove();
+    const source = sectorLayer.__sector as Sector;
+    const newSectors: Sector[] = [];
     polygons.forEach((feature: any, index: number) => {
       const coordinates = feature.geometry.coordinates[0] as number[][];
-      const zone: Zone = { ...source, id: `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${index}-${Math.random()}`}`, name: `${source.name} ${String.fromCharCode(65 + index)}`, priority: source.priority + index, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
+      const sector: Sector = { ...source, id: `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${index}-${Math.random()}`}`, name: `${source.name} ${String.fromCharCode(65 + index)}`, priority: source.priority + index, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
       const layer: any = L.polygon(toLatLngs(coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 }).addTo(map);
-      layer.__zone = zone;
-      layer.__zoneId = undefined;
+      layer.__sector = sector;
+      layer.__sectorId = undefined;
       geomanMap.pm?.reInitLayer?.(layer);
-      configureZoneLayer(layer);
-      newZones.push(zone);
+      configureSectorLayer(layer);
+      newSectors.push(sector);
     });
     restoring.current = false;
-    window.dispatchEvent(new CustomEvent<string>('efp:zone-removed', { detail: source.id }));
-    newZones.forEach(zone => window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone })));
+    window.dispatchEvent(new CustomEvent<string>('efp:sector-removed', { detail: source.id }));
+    newSectors.forEach(sector => window.dispatchEvent(new CustomEvent<Sector>('efp:sector-created', { detail: sector })));
     saveHistory();
     onToolChange('none');
   };
   const saveChanges = async () => {
     const layers = getLayers();
-    const draftLayers = layers.filter((layer: any) => !layer.__zoneId && layer.__zone);
-    const currentZoneIds = new Set<string>();
+    const draftLayers = layers.filter((layer: any) => !layer.__sectorId && layer.__sector);
+    const currentSectorIds = new Set<string>();
     const requests: Promise<Response>[] = [];
     for (const layer of layers) {
-      let coordinates = getZoneCoordinates(layer);
+      let coordinates = getSectorCoordinates(layer);
       if (!coordinates) continue;
-      const geometryType = layer.__zone?.geometry?.type ?? (layer.toGeoJSON().geometry.type === 'LineString' ? 'LineString' : 'Polygon');
-      const existing = layer.__zoneId ? layer.__zone as Zone | undefined : undefined;
+      const geometryType = layer.__sector?.geometry?.type ?? (layer.toGeoJSON().geometry.type === 'LineString' ? 'LineString' : 'Polygon');
+      const existing = layer.__sectorId ? layer.__sector as Sector | undefined : undefined;
       if (geometryType === 'Polygon') {
         const normalized = normalizePolygonCoordinates(coordinates);
-        if (!normalized) throw new Error(`Zonen "${existing?.name ?? layer.__zone?.name ?? 'Namnlös zon'}" har en ogiltig polygon. Kontrollera eller radera zonen innan du sparar.`);
+        if (!normalized) throw new Error(`Sektorn "${existing?.name ?? layer.__sector?.name ?? 'Namnlös sektor'}" har en ogiltig polygon. Kontrollera eller radera sektorn innan du sparar.`);
         coordinates = normalized;
       }
       if (existing) {
-        currentZoneIds.add(existing.id);
-        requests.push(fetch(`${API}/investigations/${investigationId}/zones/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, poa: existing.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
+        currentSectorIds.add(existing.id);
+        requests.push(fetch(`${API}/investigations/${investigationId}/sectors/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, poa: existing.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
       } else {
-        const pending = layer.__zone as Partial<Zone> | undefined;
-        requests.push(fetch(`${API}/investigations/${investigationId}/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: pending?.name ?? `Zon ${layers.length}`, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, poa: pending?.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
+        const pending = layer.__sector as Partial<Sector> | undefined;
+        requests.push(fetch(`${API}/investigations/${investigationId}/sectors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: pending?.name ?? `Sektor ${layers.length}`, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, poa: pending?.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
       }
     }
-    for (const zoneId of initialServerZoneIds.current) {
-      if (!currentZoneIds.has(zoneId)) requests.push(fetch(`${API}/investigations/${investigationId}/zones/${zoneId}`, { method: 'DELETE' }));
+    for (const sectorId of initialServerSectorIds.current) {
+      if (!currentSectorIds.has(sectorId)) requests.push(fetch(`${API}/investigations/${investigationId}/sectors/${sectorId}`, { method: 'DELETE' }));
     }
     const responses = await Promise.all(requests);
     const failed = responses.find(response => !response.ok);
-    if (failed) throw new Error((await failed.text()) || `Kunde inte spara en eller flera zoner (HTTP ${failed.status}).`);
-    // Nya zoner har först en lokal draft-geometri. När POST/PUT lyckats
+    if (failed) throw new Error((await failed.text()) || `Kunde inte spara en eller flera sektorer (HTTP ${failed.status}).`);
+    // Nya sektorer har först en lokal draft-geometri. När POST/PUT lyckats
     // laddar App om serverdata, så draft-lagren måste tas bort här för att
-    // inte lämna kvar en blå spökgeometri utanför zonlistan.
+    // inte lämna kvar en blå spökgeometri utanför sektorlistan.
     restoring.current = true;
     draftLayers.forEach((layer: any) => layer.remove());
     restoring.current = false;
   };
   const discardChanges = () => { stop(); history.current = [history.current[0]]; historyIndex.current = 0; onReady(api); };
-  const removeZone = (zoneId: string) => {
-    const layer = getLayers().find((candidate: any) => candidate.__zone?.id === zoneId);
+  const removeSector = (sectorId: string) => {
+    const layer = getLayers().find((candidate: any) => candidate.__sector?.id === sectorId);
     if (!layer) return;
     layer.remove();
     saveHistory();
@@ -759,17 +759,17 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeZone, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
-  const createZoneLayer = (zone: Zone) => zone.geometry.type === 'LineString'
-    ? L.polyline(toLatLngs(zone.geometry.coordinates), { color: '#dc2626', weight: 4 })
-    : L.polygon(toLatLngs(zone.geometry.coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 });
+  const createSectorLayer = (sector: Sector) => sector.geometry.type === 'LineString'
+    ? L.polyline(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4 })
+    : L.polygon(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 });
   useEffect(() => {
     if (!geomanMap.pm) return;
     geomanMap.pm.setGlobalOptions?.({ continueDrawing: false });
     const onCreate = (event: any) => {
       if (splitTarget.current && (event.layer.pm?.getShape?.() ?? event.layer.toGeoJSON().geometry.type) === 'Line') {
-        splitZoneWithLine(event.layer, splitTarget.current);
+        splitSectorWithLine(event.layer, splitTarget.current);
         return;
       }
       drawingMode.current = false;
@@ -779,17 +779,17 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     const onNewPolygon = (event: any) => {
       const shape = event.layer.pm?.getShape?.() ?? event.layer.toGeoJSON().geometry.type;
       if (!['Polygon', 'Rectangle', 'Circle', 'Line', 'LineString'].includes(shape)) return;
-      const coordinates = getZoneCoordinates(event.layer);
+      const coordinates = getSectorCoordinates(event.layer);
       if (!coordinates) return;
       const id = `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
       const isLine = shape === 'Line' || shape === 'LineString';
-      const zone: Zone = { id, name: nextZoneNameRef.current(), status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, poa: null, areaKm2: isLine ? 0 : calculateAreaKm2(coordinates), lengthKm: isLine ? calculateLineLengthKm(coordinates) : undefined, geometry: { type: isLine ? 'LineString' : 'Polygon', coordinates } };
-      event.layer.__zone = zone;
-      event.layer.__zoneId = undefined;
-      configureZoneLayer(event.layer);
-      window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone }));
-      // pm:create sparar en historikpost innan zonmetadata har kopplats på lagret.
-      // Spara därför en ny snapshot här så att undo kan återställa zonen som zon.
+      const sector: Sector = { id, name: nextSectorNameRef.current(), status: 'NotStarted', priority: sectors.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, poa: null, areaKm2: isLine ? 0 : calculateAreaKm2(coordinates), lengthKm: isLine ? calculateLineLengthKm(coordinates) : undefined, geometry: { type: isLine ? 'LineString' : 'Polygon', coordinates } };
+      event.layer.__sector = sector;
+      event.layer.__sectorId = undefined;
+      configureSectorLayer(event.layer);
+      window.dispatchEvent(new CustomEvent<Sector>('efp:sector-created', { detail: sector }));
+      // pm:create sparar en historikpost innan sektormetadata har kopplats på lagret.
+      // Spara därför en ny snapshot här så att undo kan återställa sektorn som sektor.
       saveHistory();
     };
     map.on('pm:create', onCreate); map.on('pm:create', onNewPolygon); map.on('pm:remove', onRemove); onReady(api);
@@ -797,45 +797,45 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   }, [map]);
   useEffect(() => {
     if (!geomanMap.pm) return;
-    const persistedZones = zones.filter(zone => !zone.id.startsWith('draft-'));
-    serverZoneLayers.current.forEach(layer => layer.remove());
-    serverZoneLayers.current = persistedZones.map(zone => {
-      const layer: any = createZoneLayer(zone).addTo(map);
-      layer.__zoneId = zone.id; layer.__zone = zone; geomanMap.pm.reInitLayer?.(layer);
-      configureZoneLayer(layer);
+    const persistedSectors = sectors.filter(sector => !sector.id.startsWith('draft-'));
+    serverSectorLayers.current.forEach(layer => layer.remove());
+    serverSectorLayers.current = persistedSectors.map(sector => {
+      const layer: any = createSectorLayer(sector).addTo(map);
+      layer.__sectorId = sector.id; layer.__sector = sector; geomanMap.pm.reInitLayer?.(layer);
+      configureSectorLayer(layer);
       return layer;
     });
     // Behåll originaluppsättningen under hela den lokala redigeringssessionen.
-    // Annars försvinner ID:n för zoner som tagits bort genom split/merge innan
+    // Annars försvinner ID:n för sektorer som tagits bort genom split/merge innan
     // saveChanges hinner skicka deras DELETE-anrop.
-    if (!serverBaselineInitialized.current && persistedZones.length > 0) {
-      initialServerZoneIds.current = persistedZones.map(zone => zone.id);
+    if (!serverBaselineInitialized.current && persistedSectors.length > 0) {
+      initialServerSectorIds.current = persistedSectors.map(sector => sector.id);
       serverBaselineInitialized.current = true;
     }
-    if (serverZoneLayers.current.length > 0) {
-      const zoneBounds = L.featureGroup(serverZoneLayers.current).getBounds();
-      if (zoneBounds.isValid()) map.fitBounds(zoneBounds, { padding: [48, 48], maxZoom: 16, animate: false });
+    if (serverSectorLayers.current.length > 0) {
+      const sectorBounds = L.featureGroup(serverSectorLayers.current).getBounds();
+      if (sectorBounds.isValid()) map.fitBounds(sectorBounds, { padding: [48, 48], maxZoom: 16, animate: false });
     }
     history.current = [snapshot()]; historyIndex.current = 0; onReady(api);
-  }, [map, persistedZoneKey]);
+  }, [map, persistedSectorKey]);
   useEffect(() => {
-    serverZoneLayers.current.forEach((layer: any) => {
-      if (!layer.__zoneId) return;
-      const selected = layer.__zoneId === selectedZoneId;
-      const hidden = hiddenZoneIds[layer.__zoneId] === true;
+    serverSectorLayers.current.forEach((layer: any) => {
+      if (!layer.__sectorId) return;
+      const selected = layer.__sectorId === selectedSectorId;
+      const hidden = hiddenSectorIds[layer.__sectorId] === true;
       if (hidden) layer.remove?.();
       else if (!map.hasLayer(layer)) layer.addTo?.(map);
       layer.setStyle?.({ color: selected ? '#f59e0b' : '#dc2626', weight: selected ? 6 : 4, opacity: 1, fillOpacity: 0.15 });
     });
-  }, [selectedZoneId, hiddenZoneIds, zones]);
+  }, [selectedSectorId, hiddenSectorIds, sectors]);
   useEffect(() => {
-    if (!selectedZoneId) return;
-    const layer = getLayers().find((candidate: any) => candidate.__zoneId === selectedZoneId || candidate.__zone?.id === selectedZoneId);
+    if (!selectedSectorId) return;
+    const layer = getLayers().find((candidate: any) => candidate.__sectorId === selectedSectorId || candidate.__sector?.id === selectedSectorId);
     const bounds = layer?.getBounds?.();
     if (bounds?.isValid?.()) map.panTo(bounds.getCenter(), { animate: true });
-  }, [selectedZoneId, zones]);
+  }, [selectedSectorId, sectors]);
   useEffect(() => {
-    if (zones.length > 0) return;
+    if (sectors.length > 0) return;
     let active = true;
     const fitSweden = () => {
       if (!active) return;
@@ -851,8 +851,8 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
       { enableHighAccuracy: false, maximumAge: 300000, timeout: 5000 },
     );
     return () => { active = false; };
-  }, [map, zones.length]);
-  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en zon och rita sedan en fri linje från kant till kant" aria-label="Dela zon: välj en zon och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela zon</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två zoner som delar en gemensam kant" aria-label="Slå ihop zoner: välj två angränsande zoner" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop zoner</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
+  }, [map, sectors.length]);
+  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en sektor och rita sedan en fri linje från kant till kant" aria-label="Dela sektor: välj en sektor och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela sektor</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två sektorer som delar en gemensam kant" aria-label="Slå ihop sektorer: välj två angränsande sektorer" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop sektorer</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
 }
 
 function TextPlacement({ enabled, onPlace }: { enabled: boolean; onPlace: (lat: number, lng: number) => void }) { useMapEvents({ click: event => { if (enabled) onPlace(event.latlng.lat, event.latlng.lng); } }); return null; }

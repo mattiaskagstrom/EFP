@@ -6,13 +6,13 @@
 
 1. Administratören skapar en sökinsats.
 2. Administratören anger namn, beskrivning, tidsperiod och eventuella instruktioner.
-3. Administratören ritar eller importerar zoner.
+3. Administratören ritar eller importerar sektorer.
 4. Systemet skapar en unik anslutningskod och QR-kod.
 5. Deltagare ansluter via mobilappen.
 
 ### Genomföra sök
 
-1. Användaren väljer eller får en zon.
+1. Användaren väljer eller får en sektor.
 2. Användaren startar spårinspelning.
 3. Appen sparar GPS-punkter lokalt.
 4. Användaren markerar fynd, observationer eller andra händelser.
@@ -22,8 +22,8 @@
 ### Följa insatsen i webben
 
 1. Administratören öppnar sökinsatsen.
-2. Spår, punkter och zoner visas på karta.
-3. Administratören filtrerar på zon, tid, patrull eller status.
+2. Spår, punkter och sektorer visas på karta.
+3. Administratören filtrerar på sektor, tid, patrull eller status.
 4. Underlaget exporteras eller arkiveras vid behov.
 
 ## 2. Centrala informationsobjekt
@@ -78,7 +78,7 @@
 - `GPS-noggrannhet`
 - `bilagor`
 
-### Zon
+### Sektor
 
 - `id`
 - `sökinsats`
@@ -99,7 +99,7 @@ Exempel på status för sökinsats:
 - avslutad
 - arkiverad
 
-Exempel på status för zon:
+Exempel på status för sektor:
 
 - ej påbörjad
 - tilldelad

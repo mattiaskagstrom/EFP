@@ -23,7 +23,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
         var paths = document.GetProperty("paths");
         Assert.True(paths.TryGetProperty("/api/v1/investigations", out _));
-        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/zones", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/sectors", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/tracks/import", out _));
     }
 
@@ -72,12 +72,12 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task Zone_contract_supports_geometry_metadata_and_soft_delete()
+    public async Task Sector_contract_supports_geometry_metadata_and_soft_delete()
     {
         var investigation = await CreateInvestigation();
         var payload = new
         {
-            name = "Zon A",
+            name = "Sektor A",
             status = "NotStarted",
             searchMethod = "Patrol",
             priority = 1,
@@ -87,20 +87,20 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             showArea = false,
             geometry = new { coordinates = new[] { new[] { 18.0, 59.0 }, new[] { 18.01, 59.0 }, new[] { 18.0, 59.01 } } },
         };
-        var create = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/zones", payload);
+        var create = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", payload);
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var created = await create.Content.ReadFromJsonAsync<JsonElement>();
-        var zoneId = created.GetProperty("id").GetGuid();
+        var sectorId = created.GetProperty("id").GetGuid();
         Assert.True(created.GetProperty("areaKm2").GetDouble() > 0);
         Assert.Equal("Patrol", created.GetProperty("searchMethod").GetString());
 
-        var invalid = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/zones", new { payload.name, payload.status, payload.searchMethod, payload.priority, geometry = new { coordinates = new[] { new[] { 18.0, 59.0 }, new[] { 18.01, 59.0 } } } });
+        var invalid = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", new { payload.name, payload.status, payload.searchMethod, payload.priority, geometry = new { coordinates = new[] { new[] { 18.0, 59.0 }, new[] { 18.01, 59.0 } } } });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
 
-        var delete = await client.DeleteAsync($"/api/v1/investigations/{investigation}/zones/{zoneId}");
+        var delete = await client.DeleteAsync($"/api/v1/investigations/{investigation}/sectors/{sectorId}");
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-        var zones = await client.GetFromJsonAsync<JsonElement>($"/api/v1/investigations/{investigation}/zones");
-        Assert.DoesNotContain(zones.EnumerateArray(), item => item.GetProperty("id").GetGuid() == zoneId);
+        var sectors = await client.GetFromJsonAsync<JsonElement>($"/api/v1/investigations/{investigation}/sectors");
+        Assert.DoesNotContain(sectors.EnumerateArray(), item => item.GetProperty("id").GetGuid() == sectorId);
     }
 
     [Fact]
@@ -122,12 +122,12 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     {
         var investigation = await CreateInvestigation();
         var gpx = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.gpx");
-        var zonesGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.gpx");
-        var garminGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.garmin.gpx");
+        var sectorsGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/sectors.gpx");
+        var garminGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/sectors.garmin.gpx");
         var garminTracksGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.garmin.gpx");
-        var geoJson = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.geojson");
+        var geoJson = await client.GetAsync($"/api/v1/investigations/{investigation}/sectors.geojson");
         Assert.Equal("application/gpx+xml", gpx.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("creator=\"EFP Garmin export\"", await zonesGpx.Content.ReadAsStringAsync());
+        Assert.Contains("creator=\"EFP Garmin export\"", await sectorsGpx.Content.ReadAsStringAsync());
         Assert.Equal("application/gpx+xml", garminGpx.Content.Headers.ContentType?.MediaType);
         Assert.Contains("creator=\"EFP Garmin export\"", await garminGpx.Content.ReadAsStringAsync());
         Assert.Equal("application/gpx+xml", garminTracksGpx.Content.Headers.ContentType?.MediaType);

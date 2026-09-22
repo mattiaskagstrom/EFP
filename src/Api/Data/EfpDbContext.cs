@@ -6,7 +6,7 @@ namespace Efp.Api.Data;
 public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : DbContext(options)
 {
     public DbSet<Investigation> Investigations => Set<Investigation>();
-    public DbSet<Zone> Zones => Set<Zone>();
+    public DbSet<Sector> Sectors => Set<Sector>();
     public DbSet<Track> Tracks => Set<Track>();
     public DbSet<ReferencePoint> ReferencePoints => Set<ReferencePoint>();
 
@@ -14,14 +14,16 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : DbCon
     {
         modelBuilder.HasPostgresExtension("postgis");
         modelBuilder.Entity<Investigation>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<Zone>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<Zone>().Property(x => x.SearchMethod).HasConversion<string>();
+        // Keep the existing physical table name while exposing the domain as sectors.
+        modelBuilder.Entity<Sector>().ToTable("Zones");
+        modelBuilder.Entity<Sector>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<Sector>().Property(x => x.SearchMethod).HasConversion<string>();
         modelBuilder.Entity<ReferencePoint>().Property(x => x.Type).HasConversion<string>();
-        modelBuilder.Entity<Zone>().Property(x => x.Geometry).HasColumnType("geometry (Geometry, 4326)");
-        modelBuilder.Entity<Zone>().HasQueryFilter(x => !x.IsDeleted);
+        modelBuilder.Entity<Sector>().Property(x => x.Geometry).HasColumnType("geometry (Geometry, 4326)");
+        modelBuilder.Entity<Sector>().HasQueryFilter(x => !x.IsDeleted);
         modelBuilder.Entity<Track>().Property(x => x.Geometry).HasColumnType("geometry (LineString, 4326)");
         modelBuilder.Entity<ReferencePoint>().Property(x => x.Geometry).HasColumnType("geometry (Point, 4326)");
-        modelBuilder.Entity<Zone>().HasIndex(x => x.Geometry).HasMethod("gist");
+        modelBuilder.Entity<Sector>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<Track>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<ReferencePoint>().HasIndex(x => x.Geometry).HasMethod("gist");
     }

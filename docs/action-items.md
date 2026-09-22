@@ -11,17 +11,17 @@ Arbetet genomförs i följande ordning:
 2. Androidapplikation.
 3. iOS-applikation.
 
-Målet för prioritet 1 är att skapa ett användbart system för att administrera zoner samt importera och exportera geografiskt underlag. Det ska kunna användas tillsammans med andra appar som stödjer GPX innan mobilapparna är färdiga.
+Målet för prioritet 1 är att skapa ett användbart system för att administrera sektorer samt importera och exportera geografiskt underlag. Det ska kunna användas tillsammans med andra appar som stödjer GPX innan mobilapparna är färdiga.
 
 ## Definition av första användbara leverans
 
 Den första leveransen ska kunna:
 
 - skapa en sökinsats
-- rita, redigera och ta bort zoner
+- rita, redigera och ta bort sektorer
 - importera GPS-spår från GPX
-- visa spår och zoner på karta
-- exportera spår och zoner i överenskomna format
+- visa spår och sektorer på karta
+- exportera spår och sektorer i överenskomna format
 - filtrera och välja vilka objekt som ska exporteras
 - köras på Linux/Proxmox
 - säkerhetskopiera och återställa databasen
@@ -41,13 +41,13 @@ Den första leveransen ska kunna:
 
 ### 1.2 Domänmodell och databas
 
-- [ ] Definiera entiteter för sökinsats, zon, spår, spårpunkt och import/exportjobb.
-- [ ] Definiera livscykel och status för sökinsats och zon.
+- [ ] Definiera entiteter för sökinsats, sektor, spår, spårpunkt och import/exportjobb.
+- [ ] Definiera livscykel och status för sökinsats och sektor.
 - [ ] Bestämma koordinatsystem och precision.
 - [ ] Skapa PostgreSQL/PostGIS-schema.
 - [ ] Lägga till spatiala index.
 - [ ] Implementera EF Core-modeller och databasmigreringar.
-- [ ] Skapa testdata för en sökinsats med zoner och spår.
+- [ ] Skapa testdata för en sökinsats med sektorer och spår.
 
 **Klart när:** En testdatabas kan skapas från tom miljö och innehåller validerade geoobjekt.
 
@@ -56,15 +56,15 @@ Den första leveransen ska kunna:
 - [ ] Skapa ASP.NET Core API.
 - [ ] Implementera OpenAPI/Swagger.
 - [ ] Implementera CRUD för sökinsatser.
-- [ ] Implementera CRUD för zoner.
+- [ ] Implementera CRUD för sektorer.
 - [ ] Implementera hämtning av spår och spårpunkter.
-- [ ] Implementera filtrering på sökinsats, zon, tid och källa.
+- [ ] Implementera filtrering på sökinsats, sektor, tid och källa.
 - [ ] Implementera validering av koordinater och geometrier.
 - [ ] Implementera tydliga felkoder och felmeddelanden.
 - [ ] Införa API-versionering från början.
 - [ ] Skriva en första uppsättning enhetstester och API-tester.
 
-**Klart när:** Webbklienten kan skapa, läsa, ändra och ta bort sökinsatser och zoner via API:et.
+**Klart när:** Webbklienten kan skapa, läsa, ändra och ta bort sökinsatser och sektorer via API:et.
 
 ### 1.4 GPX-import av spår
 
@@ -81,17 +81,17 @@ Den första leveransen ska kunna:
 
 **Klart när:** En användare kan importera en extern GPX-fil, granska resultatet på karta och spara spåret i rätt sökinsats.
 
-### 1.5 Export av spår och zoner
+### 1.5 Export av spår och sektorer
 
 - [ ] Definiera vilka objekt som ska kunna exporteras.
 - [ ] Implementera export av spår till GPX.
 - [ ] Implementera export av punkter som GPX waypoints.
-- [ ] Bestämma format för polygonzoner.
-- [ ] Implementera export av zoner som GeoJSON.
-- [ ] Utreda om zoner även ska exporteras som KML/KMZ eller annat praktiskt format.
-- [ ] Dokumentera att GPX inte är ett fullständigt standardformat för polygonala zoner.
+- [ ] Bestämma format för polygonsektorer.
+- [ ] Implementera export av sektorer som GeoJSON.
+- [ ] Utreda om sektorer även ska exporteras som KML/KMZ eller annat praktiskt format.
+- [ ] Dokumentera att GPX inte är ett fullständigt standardformat för polygonala sektorer.
 - [ ] Låta användaren välja hela sökinsatsen eller filtrerat urval.
-- [ ] Låta användaren välja spår, punkter, zoner eller kombinationer.
+- [ ] Låta användaren välja spår, punkter, sektorer eller kombinationer.
 - [ ] Generera tydliga filnamn och metadata.
 - [ ] Skriva tester som verifierar att exporterade filer kan öppnas i vanliga GIS- och GPX-verktyg.
 
@@ -102,17 +102,17 @@ Den första leveransen ska kunna:
 - [ ] Skapa React/TypeScript-applikation för administration.
 - [ ] Implementera inloggning eller annan initial administratörsautentisering.
 - [ ] Skapa vy för lista och skapande av sökinsatser.
-- [ ] Skapa kartvy med lager för zoner och spår.
-- [ ] Implementera ritning av polygonzon.
-- [ ] Implementera redigering av zonens hörnpunkter.
-- [ ] Implementera flytt, kopiering och borttagning av zoner.
-- [ ] Implementera zonens namn, instruktion, status och prioritet.
+- [ ] Skapa kartvy med lager för sektorer och spår.
+- [ ] Implementera ritning av polygonsektor.
+- [ ] Implementera redigering av sektorns hörnpunkter.
+- [ ] Implementera flytt, kopiering och borttagning av sektorer.
+- [ ] Implementera sektorns namn, instruktion, status och prioritet.
 - [ ] Implementera importdialog för GPX.
 - [ ] Implementera exportdialog med filter och formatval.
 - [ ] Visa import- och exportfel på ett begripligt sätt.
 - [ ] Implementera enkel legend och lagerkontroll.
 
-**Klart när:** En administratör kan skapa en sökinsats, rita zoner, importera spår och exportera ett avgränsat underlag utan terminal eller manuell databashantering.
+**Klart när:** En administratör kan skapa en sökinsats, rita sektorer, importera spår och exportera ett avgränsat underlag utan terminal eller manuell databashantering.
 
 ### 1.7 Drift och distribution
 
@@ -134,7 +134,7 @@ Den första leveransen ska kunna:
 - [ ] Testa import med GPX från flera olika appar.
 - [ ] Testa stora spår och många samtidiga spår.
 - [ ] Testa ogiltiga och skadade GPX-filer.
-- [ ] Testa zoner med få och många hörnpunkter.
+- [ ] Testa sektorer med få och många hörnpunkter.
 - [ ] Testa koordinater nära svenska latituder och longituder.
 - [ ] Testa behörighet mellan administratörer och vanliga användare.
 - [ ] Testa backup och återställning.
@@ -149,7 +149,7 @@ Android utvecklas efter att backendens datamodell, API och import/exportflöden 
 - [ ] Skapa React Native-applikation med TypeScript.
 - [ ] Implementera anslutning till sökinsats via kod och QR-kod.
 - [ ] Implementera lokal lagring och lokal kö för osynkade ändringar.
-- [ ] Implementera visning av sökinsats, zoner och spår.
+- [ ] Implementera visning av sökinsats, sektorer och spår.
 - [ ] Implementera hantering av GPS-behörigheter.
 
 ### 2.2 GPS-spårning
@@ -189,23 +189,23 @@ iOS-appen ska i största möjliga mån återanvända Android-appens domänlogik,
 
 **Klart när:** En iOS-användare kan genomföra samma centrala arbetsflöde som Androidanvändaren med plattformens krav uppfyllda.
 
-## Vidareutveckling – MSO-baserad zonfördelning
+## Vidareutveckling – MSO-baserad sektorfördelning
 
-Automatisk zonfördelning prioriteras efter den första mobilversionen. Funktionen ska generera ett granskningsbart beslutsunderlag, inte ersätta insatsledningens beslut.
+Automatisk sektorfördelning prioriteras efter den första mobilversionen. Funktionen ska generera ett granskningsbart beslutsunderlag, inte ersätta insatsledningens beslut.
 
 ### Förberedande datamodell
 
 - [ ] Modellera PLS, LKP och IPP som namngivna geografiska referenspunkter.
 - [ ] Modellera sökområde, primärt sökområde och segment.
 - [ ] Modellera ledstänger som linjegeometrier eller importerade kartobjekt.
-- [ ] Lägga till sökmetod på zoner och segment.
+- [ ] Lägga till sökmetod på sektorer och segment.
 - [ ] Lägga till prioritet, POA, POD och källa/underlag där det är relevant.
-- [ ] Spara profilversion och indata för varje genererad zonindelning.
+- [ ] Spara profilversion och indata för varje genererad sektorindelning.
 
 ### Kravanalys och verksamhetsförankring
 
-- [ ] Ta fram konkreta exempel på MSO-profiler och tidigare zonindelningar.
-- [ ] Dokumentera hur PLS, LKP och IPP ska påverka zonförslaget.
+- [ ] Ta fram konkreta exempel på MSO-profiler och tidigare sektorindelningar.
+- [ ] Dokumentera hur PLS, LKP och IPP ska påverka sektorförslaget.
 - [ ] Definiera vilka terrängobjekt som ska räknas som ledstänger.
 - [ ] Definiera regler för prioritering mellan primärt sökområde, ledstänger och övriga segment.
 - [ ] Definiera vilka sökmetoder som kan kombineras i samma insats.
@@ -223,12 +223,12 @@ Automatisk zonfördelning prioriteras efter den första mobilversionen. Funktion
 - [ ] Spara både automatgenererad och manuellt ändrad version.
 - [ ] Exportera det godkända resultatet.
 
-**Klart när:** En insatsadministratör kan ange MSO-relaterade indata, få ett begripligt zonförslag, ändra förslaget och godkänna en slutlig zonindelning.
+**Klart när:** En insatsadministratör kan ange MSO-relaterade indata, få ett begripligt sektorförslag, ändra förslaget och godkänna en slutlig sektorindelning.
 
 ## Tekniska beslut som bör tas tidigt
 
 - [ ] Fastställ koordinatsystem.
-- [ ] Fastställ exportformat för zoner, med GeoJSON som rekommenderad bas.
+- [ ] Fastställ exportformat för sektorer, med GeoJSON som rekommenderad bas.
 - [ ] Välj GPX-bibliotek för .NET.
 - [ ] Välj kartbibliotek och kartdatakälla.
 - [ ] Välj monorepoverktyg.
@@ -237,16 +237,16 @@ Automatisk zonfördelning prioriteras efter den första mobilversionen. Funktion
 - [ ] Fastställ regler för vem som får se och ändra importerade spår.
 - [ ] Kontrollera licens och budget för bakgrunds-GPS-biblioteket.
 - [ ] Bestäm om foton ska ingå i första mobilversionen.
-- [ ] Bestäm vilka delar av MSO-baserad zonfördelning som ska vara regelbaserade respektive manuella.
+- [ ] Bestäm vilka delar av MSO-baserad sektorfördelning som ska vara regelbaserade respektive manuella.
 
 ## Föreslagen ordning inom prioritet 1
 
 1. Projektgrund och lokal utvecklingsmiljö.
 2. Datamodell och PostGIS-schema.
-3. Backend-API för sökinsats, zoner och spår.
+3. Backend-API för sökinsats, sektorer och spår.
 4. GPX-import.
-5. Admin-karta och zonredigering.
-6. Export av spår, punkter och zoner.
+5. Admin-karta och sektorredigering.
+6. Export av spår, punkter och sektorer.
 7. Driftpaketering och backup.
 8. Kvalitetssäkring med riktiga testfiler.
 
