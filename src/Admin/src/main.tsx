@@ -887,7 +887,10 @@ function normalizePolygonCoordinates(coordinates: number[][]): number[][] | null
   if (points.length < 3) return null;
   const first = points[0]; const last = points[points.length - 1];
   const closeEnough = Math.abs(first[0] - last[0]) <= 1e-7 && Math.abs(first[1] - last[1]) <= 1e-7;
-  const ring = closeEnough ? [...points.slice(0, -1), [...first]] : [...points, [...first]];
+  const openPoints = closeEnough ? points.slice(0, -1) : points;
+  const uniquePoints = openPoints.filter((point, index) => !openPoints.slice(0, index).some(previous => Math.abs(previous[0] - point[0]) <= 1e-7 && Math.abs(previous[1] - point[1]) <= 1e-7));
+  if (uniquePoints.length < 3) return null;
+  const ring = [...uniquePoints, [...uniquePoints[0]]];
   const distinct = new Set(ring.slice(0, -1).map(([lng, lat]) => `${lng.toFixed(7)},${lat.toFixed(7)}`));
   if (distinct.size < 3) return null;
   const area = Math.abs(ring.slice(0, -1).reduce((sum, current, index) => {

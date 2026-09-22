@@ -58,6 +58,12 @@ public static class ZoneEndpoints
             error = points.Length >= 2 && geometry.IsValid ? string.Empty : "A line needs at least two valid coordinates.";
             return error.Length == 0;
         }
+        var uniquePoints = new List<Coordinate>();
+        foreach (var point in points)
+        {
+            if (!uniquePoints.Any(existing => existing.Equals2D(point))) uniquePoints.Add(point);
+        }
+        points = uniquePoints.ToArray();
         if (points.Length < 3) { geometry = factory.CreatePolygon(); error = "A polygon needs at least three coordinates."; return false; }
         if (!points.First().Equals2D(points.Last())) points = [.. points, points[0]];
         var polygon = factory.CreatePolygon(factory.CreateLinearRing(points));
