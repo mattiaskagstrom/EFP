@@ -16,6 +16,7 @@ public static class ImportExportEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
         group.MapPost("/tracks/import", ImportGpxAsync).DisableAntiforgery();
+        group.MapPatch("/tracks/{trackId:guid}", UpdateTrackMetadataAsync);
         group.MapPost("/zones/import", ImportZonesGpxAsync).DisableAntiforgery();
         group.MapGet("/zones.geojson", ExportZonesGeoJsonAsync);
         group.MapGet("/zones.gpx", ExportZonesGarminGpxAsync);
@@ -38,6 +39,16 @@ public static class ImportExportEndpoints
         var track = new Track { InvestigationId = investigationId, Callsign = string.IsNullOrWhiteSpace(callsign) ? "GPX import" : callsign.Trim(), SourceFile = file.FileName, Geometry = geometry };
         db.Tracks.Add(track); await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/investigations/{investigationId}/tracks/{track.Id}", new { track.Id, track.Callsign, track.SourceFile, PointCount = points.Length });
+    }
+
+    private static async Task<IResult> UpdateTrackMetadataAsync(Guid investigationId, Guid trackId, TrackMetadataRequest request, EfpDbContext db, CancellationToken ct)
+    {
+        if (request.Pod is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["pod"] = ["POD måste vara mellan 0 och 100."] });
+        var track = await db.Tracks.FirstOrDefaultAsync(x => x.Id == trackId && x.InvestigationId == investigationId, ct);
+        if (track is null) return Results.NotFound();
+        track.Pod = request.Pod;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { track.Id, track.Callsign, track.SourceFile, track.Pod });
     }
 
     private static async Task<IResult> ImportZonesGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, CancellationToken ct)
@@ -76,10 +87,11 @@ public static class ImportExportEndpoints
 
     private static List<Polygon> PolygonizeTrack(GeometryFactory factory, Coordinate[] points)
     {
+        if (points.Select(point => $"{point.X:F7},{point.Y:F7}").Distinct().Count() < 3) return [];
         if (points.Length >= 4 && points[0].Equals2D(points[^1]))
         {
             var polygon = factory.CreatePolygon(factory.CreateLinearRing(points));
-            return polygon.IsValid ? [polygon] : [];
+            return polygon.IsValid && polygon.Area > 0 ? [polygon] : [];
         }
 
         var line = factory.CreateLineString(points);
@@ -139,7 +151,7 @@ public static class ImportExportEndpoints
     private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
     {
         var tracks = await db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct);
-        var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.StartedAt, track.EndedAt }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
+        var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.StartedAt, track.EndedAt, track.Pod }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
@@ -161,3 +173,5 @@ public static class ImportExportEndpoints
         ? new { type = "Polygon", coordinates = new[] { geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } }
         : new { type = "LineString", coordinates = geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() };
 }
+
+public sealed record TrackMetadataRequest(double? Pod = null);

@@ -20,7 +20,7 @@ public static class InvestigationEndpoints
             if (string.IsNullOrWhiteSpace(request.Name)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Name is required."] });
             if (request.StartsAt.HasValue && request.EndsAt.HasValue && request.EndsAt < request.StartsAt)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["endsAt"] = ["Sluttiden måste vara efter starttiden."] });
-            var item = new Investigation { Name = request.Name.Trim(), Description = request.Description, StartsAt = request.StartsAt, EndsAt = request.EndsAt };
+            var item = new Investigation { Name = request.Name.Trim(), Description = request.Description, StartsAt = request.StartsAt, EndsAt = request.EndsAt, SearchConditions = request.SearchConditions };
             db.Investigations.Add(item); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/v1/investigations/{item.Id}", item);
         });
@@ -32,6 +32,7 @@ public static class InvestigationEndpoints
             if (request.Description is not null) item.Description = request.Description;
             if (request.StartsAt.HasValue) item.StartsAt = request.StartsAt;
             if (request.EndsAt.HasValue) item.EndsAt = request.EndsAt;
+            if (request.SearchConditions is not null) item.SearchConditions = request.SearchConditions;
             if (request.Status is not null) item.Status = request.Status.Value;
             if (item.StartsAt.HasValue && item.EndsAt.HasValue && item.EndsAt < item.StartsAt)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["endsAt"] = ["Sluttiden måste vara efter starttiden."] });
@@ -42,5 +43,5 @@ public static class InvestigationEndpoints
     }
 }
 
-public sealed record CreateInvestigationRequest(string Name, string? Description, DateTimeOffset? StartsAt = null, DateTimeOffset? EndsAt = null);
-public sealed record UpdateInvestigationRequest(string? Name, string? Description, InvestigationStatus? Status, DateTimeOffset? StartsAt = null, DateTimeOffset? EndsAt = null);
+public sealed record CreateInvestigationRequest(string Name, string? Description, DateTimeOffset? StartsAt = null, DateTimeOffset? EndsAt = null, string? SearchConditions = null);
+public sealed record UpdateInvestigationRequest(string? Name, string? Description, InvestigationStatus? Status, DateTimeOffset? StartsAt = null, DateTimeOffset? EndsAt = null, string? SearchConditions = null);

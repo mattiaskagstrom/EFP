@@ -14,6 +14,7 @@ public sealed class Investigation
     public string? Description { get; set; }
     public DateTimeOffset? StartsAt { get; set; }
     public DateTimeOffset? EndsAt { get; set; }
+    public string? SearchConditions { get; set; }
     public InvestigationStatus Status { get; set; } = InvestigationStatus.Planned;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -38,6 +39,7 @@ public sealed class Zone
     public int Points { get; set; }
     public bool ShowName { get; set; }
     public bool ShowArea { get; set; }
+    public double? Poa { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
     public Geometry Geometry { get; set; } = default!;
@@ -53,6 +55,7 @@ public sealed class Track
     public string? SourceFile { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? EndedAt { get; set; }
+    public double? Pod { get; set; }
     public LineString Geometry { get; set; } = default!;
     public DateTimeOffset ImportedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -15,16 +15,17 @@ import { filterZonesByName } from './zoneSearch';
 import { InvestigationEditButton } from './InvestigationEditButton';
 import { exportFormats } from './exportFormats';
 
-type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null };
-type Zone = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
-type Track = { id: string; callsign?: string; sourceFile?: string; geometry: { type: 'LineString'; coordinates: number[][] } };
+type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
+type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
+type Zone = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
+type Track = { id: string; callsign?: string; sourceFile?: string; pod?: number | null; geometry: { type: 'LineString'; coordinates: number[][] } };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
 type ActiveTool = 'none' | DrawMode | 'Text' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
 type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
 type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; zoneId?: string; zone?: Partial<Zone>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
-type ZoneDetails = Pick<Zone, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeZone: (zoneId: string) => void; split: () => void; merge: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type ZoneDetails = Pick<Zone, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeZone: (zoneId: string) => void; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 const center: [number, number] = [59.33, 18.06];
@@ -37,6 +38,7 @@ function App() {
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
   const [selected, setSelected] = useState<Investigation | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [zoneDrafts, setZoneDrafts] = useState<Record<string, ZoneDetails>>({});
   const [tracks, setTracks] = useState<Track[]>([]);
   const [visibleTracks, setVisibleTracks] = useState<Record<string, boolean>>({});
@@ -53,18 +55,20 @@ function App() {
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Record<string, boolean>>({});
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const [zoneSearch, setZoneSearch] = useState('');
-  const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '' });
+  const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
   const [investigationSaving, setInvestigationSaving] = useState(false);
 
   const load = async () => setInvestigations(await fetch(`${API}/investigations`).then(r => r.json()));
   useEffect(() => { void load(); }, []);
   const loadSelectedData = async (investigation: Investigation) => {
-    const [zoneResponse, trackResponse] = await Promise.all([
+    const [zoneResponse, trackResponse, referencePointResponse] = await Promise.all([
       fetch(`${API}/investigations/${investigation.id}/zones`),
       fetch(`${API}/investigations/${investigation.id}/tracks.geojson`),
+      fetch(`${API}/investigations/${investigation.id}/reference-points`),
     ]);
     const loadedZones = zoneResponse.ok ? await zoneResponse.json() : [];
     const trackCollection = trackResponse.ok ? await trackResponse.json() : { features: [] };
+    const loadedReferencePoints = referencePointResponse.ok ? await referencePointResponse.json() : [];
     const loadedTracks = (trackCollection.features ?? []).filter((feature: any) => feature?.geometry?.type === 'LineString' && Array.isArray(feature.geometry.coordinates)).map((feature: any) => ({
       id: String(feature.id),
       callsign: feature.properties?.callsign,
@@ -75,11 +79,12 @@ function App() {
       const geometryType = zone.geometry?.type ?? (zone.geometry?.coordinates?.length === 2 ? 'LineString' : 'Polygon');
       return { ...zone, geometry: { ...zone.geometry, type: geometryType }, ...(geometryType === 'LineString' ? { lengthKm: zone.areaKm2 ?? 0 } : {}) };
     }));
-    setZoneDrafts(Object.fromEntries(loadedZones.map((zone: Zone) => [zone.id, { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea }])));
+    setZoneDrafts(Object.fromEntries(loadedZones.map((zone: Zone) => [zone.id, { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null }])));
     setTracks(loadedTracks);
+    setReferencePoints(loadedReferencePoints);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
   };
-  useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt) }); void loadSelectedData(selected); } else { setZones([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
+  useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setZones([]); setReferencePoints([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => {
     const repaintAfterFileDialog = () => {
@@ -150,7 +155,7 @@ function App() {
     if (investigationDraft.startsAt && investigationDraft.endsAt && investigationDraft.endsAt < investigationDraft.startsAt) return setError('Sluttiden måste vara efter starttiden.');
     setInvestigationSaving(true); setError('');
     try {
-      const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: investigationDraft.name.trim(), description: investigationDraft.description || null, startsAt: investigationDraft.startsAt ? new Date(investigationDraft.startsAt).toISOString() : null, endsAt: investigationDraft.endsAt ? new Date(investigationDraft.endsAt).toISOString() : null }) });
+      const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: investigationDraft.name.trim(), description: investigationDraft.description || null, startsAt: investigationDraft.startsAt ? new Date(investigationDraft.startsAt).toISOString() : null, endsAt: investigationDraft.endsAt ? new Date(investigationDraft.endsAt).toISOString() : null, searchConditions: investigationDraft.searchConditions || null }) });
       if (!response.ok) throw new Error((await response.text()) || 'Kunde inte spara insatsens inställningar.');
       const updated = await response.json() as Investigation;
       setSelected(updated); await load();
@@ -165,6 +170,16 @@ function App() {
     if (!response.ok) { setError((await response.text()) || 'Kunde inte ändra insatsens status.'); return; }
     const updated = await response.json() as Investigation;
     setSelected(updated); await load();
+  };
+  const saveReferencePoint = async (type: ReferencePoint['type'], latitude: number, longitude: number) => {
+    if (!selected) return;
+    const labels: Record<ReferencePoint['type'], string> = { Pls: 'PLS', Lkp: 'LKP', Ipp: 'IPP' };
+    const label = window.prompt(`Namn på ${labels[type]}`, labels[type]);
+    if (label === null || !label.trim()) return;
+    const response = await fetch(`${API}/investigations/${selected.id}/reference-points`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, label: label.trim(), latitude, longitude }) });
+    if (!response.ok) { setError((await response.text()) || `Kunde inte spara ${labels[type]}.`); return; }
+    const created = await response.json() as ReferencePoint;
+    setReferencePoints(current => [...current, created]);
   };
   const saveLatestZone = async () => {
     if (!selected) return setError('Välj en sökinsats först.');
@@ -242,7 +257,7 @@ function App() {
     setZones(current => current.some(item => item.id === zone.id)
       ? current.map(item => item.id === zone.id ? zone : item)
       : [...current, zone]);
-    setZoneDrafts(current => ({ ...current, [zone.id]: { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea } }));
+    setZoneDrafts(current => ({ ...current, [zone.id]: { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null } }));
     setSelectedZoneId(zone.id);
     setExpandedZoneId(zone.id);
   };
@@ -260,6 +275,14 @@ function App() {
     let number = 1;
     while (names.has(`zon ${number}`)) number += 1;
     return `Zon ${number}`;
+  };
+  const updateTrackPod = async (track: Track, value: string) => {
+    if (!selected) return;
+    const pod = value === '' ? null : Number(value);
+    if (pod !== null && (!Number.isFinite(pod) || pod < 0 || pod > 100)) return setError('POD måste vara mellan 0 och 100.');
+    const response = await fetch(`${API}/investigations/${selected.id}/tracks/${track.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pod }) });
+    if (!response.ok) return setError((await response.text()) || 'Kunde inte spara POD.');
+    setTracks(current => current.map(item => item.id === track.id ? { ...item, pod } : item));
   };
 
   if (!selected) return <main className="selection-screen">
@@ -280,22 +303,22 @@ function App() {
           <button className="zones-section-toggle" onClick={() => setZonesExpanded(current => !current)}><h3>Zoner</h3><span aria-hidden="true">{zonesExpanded ? '▴' : '▾'}</span></button>
           {zonesExpanded && <><input className="zone-search" type="search" value={zoneSearch} onChange={event => setZoneSearch(event.target.value)} placeholder="Sök zon-namn" aria-label="Sök zon-namn" />
             {zones.length === 0 ? <p className="muted">Inga zoner i sökinsatsen.</p> : matchingZones.length === 0 ? <p className="muted">Inga zoner matchar sökningen.</p> : matchingZones.map(zone => {
-              const draft = zoneDrafts[zone.id] ?? { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea };
+              const draft = zoneDrafts[zone.id] ?? { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea, poa: zone.poa ?? null };
               const expanded = expandedZoneId === zone.id; const hidden = hiddenZoneIds[zone.id] === true;
               return <article className={`zone-card ${selectedZoneId === zone.id ? 'selected' : ''}`} key={zone.id}><button className="zone-card-header" onClick={() => { setSelectedZoneId(zone.id); setExpandedZoneId(expanded ? null : zone.id); }}><span>{draft.name || 'Namnlös zon'}</span><span className="zone-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
-                {expanded && <div className="zone-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateZoneDraft(zone.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateZoneDraft(zone.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateZoneDraft(zone.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateZoneDraft(zone.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateZoneDraft(zone.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateZoneDraft(zone.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifyZone(zone.id, simplifyTolerance)}>Förenkla polygon</button><div className="zone-card-actions"><button onClick={() => toggleZoneVisibility(zone.id)}>{hidden ? 'Visa zon i kartan' : 'Dölj zon i kartan'}</button><button className="danger-button" onClick={() => void deleteZone(zone)}>Radera zon</button></div></div>}</article>;
+                {expanded && <div className="zone-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateZoneDraft(zone.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateZoneDraft(zone.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateZoneDraft(zone.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateZoneDraft(zone.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateZoneDraft(zone.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateZoneDraft(zone.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateZoneDraft(zone.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifyZone(zone.id, simplifyTolerance)}>Förenkla polygon</button><div className="zone-card-actions"><button onClick={() => toggleZoneVisibility(zone.id)}>{hidden ? 'Visa zon i kartan' : 'Dölj zon i kartan'}</button><button className="danger-button" onClick={() => void deleteZone(zone)}>Radera zon</button></div></div>}</article>;
             })}</>}
         </section>
         <details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Zoner</strong>{exportFormats.map(format => <a key={`zone-${format.label}`} href={format.zones(API, selected.id)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={format.tracks(API, selected.id)}>{format.label}</a>)}</div></details>
         <section className="sidebar-section"><h3>Importera zoner från GPX</h3><input id="gpx-zone-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importZoneGpx(event)} /><label className="file-button" htmlFor="gpx-zone-import">Välj zon-GPX-fil</label></section>
-        <section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length > 0 && <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span></label>)}</div>}</section>
+        <section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length > 0 && <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span><input aria-label={`POD för ${track.sourceFile ?? track.callsign ?? 'spår'}`} type="number" min="0" max="100" step="0.1" value={track.pod ?? ''} placeholder="POD %" onChange={event => void updateTrackPod(track, event.target.value)} /></label>)}</div>}</section>
       </aside>
       <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} zones={zones} nextZoneName={nextZoneName} activeTool={activeTool} onToolChange={setActiveTool} selectedZoneId={selectedZoneId} hiddenZoneIds={hiddenZoneIds} onZoneSelect={zoneId => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
   </main>;
 }
 
-type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string };
+type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string; searchConditions: string };
 
 function InvestigationInlineSettingsV2({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
   const [target, setTarget] = useState<HTMLElement | null>(null);
@@ -308,7 +331,7 @@ function InvestigationInlineSettingsV2({ investigation, draft, saving, onDraftCh
   const update = (changes: Partial<InvestigationDraft>) => onDraftChange(current => ({ ...current, ...changes }));
   const viewField = (label: string, value: string, className = '') => <div className={`stacked-setting ${className}`}><span className="stacked-setting-label">{label}</span><span className="stacked-setting-value">{value || 'Inte angivet'}</span></div>;
   if (!target) return null;
-  return createPortal(<><section className="sidebar-section investigation-settings-v2"><h3>Insats <InvestigationEditButton editing={editing} onClick={beginEditing} /></h3>{editing ? <><label className="stacked-setting">Namn<input autoFocus value={draft.name} onChange={event => update({ name: event.target.value })} /></label><label className="stacked-setting">Status<select value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select></label><label className="stacked-setting">Beskrivning<textarea value={draft.description} onChange={event => update({ description: event.target.value })} rows={3} /></label><label className="stacked-setting">Starttid<input type="datetime-local" value={draft.startsAt} onChange={event => update({ startsAt: event.target.value })} /></label><label className="stacked-setting">Sluttid<input type="datetime-local" value={draft.endsAt} onChange={event => update({ endsAt: event.target.value })} /></label><div className="inline-edit-actions"><button type="button" onClick={save} disabled={saving}>Spara</button><button type="button" className="cancel-inline-edit" onClick={cancel}>Avbryt</button></div></> : <>{viewField('Namn', draft.name, 'investigation-name')}{viewField('Status', investigationStatusLabel(investigation.status))}{viewField('Beskrivning', draft.description, 'investigation-description')}{viewField('Starttid', formatDateTime(draft.startsAt))}{viewField('Sluttid', formatDateTime(draft.endsAt))}</>}</section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>Arkivera sökinsats</button>}</>, target);
+  return createPortal(<><section className="sidebar-section investigation-settings-v2"><h3>Insats <InvestigationEditButton editing={editing} onClick={beginEditing} /></h3>{editing ? <><label className="stacked-setting">Namn<input autoFocus value={draft.name} onChange={event => update({ name: event.target.value })} /></label><label className="stacked-setting">Status<select value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select></label><label className="stacked-setting">Beskrivning<textarea value={draft.description} onChange={event => update({ description: event.target.value })} rows={3} /></label><label className="stacked-setting">Starttid<input type="datetime-local" value={draft.startsAt} onChange={event => update({ startsAt: event.target.value })} /></label><label className="stacked-setting">Sluttid<input type="datetime-local" value={draft.endsAt} onChange={event => update({ endsAt: event.target.value })} /></label><label className="stacked-setting">Sökförutsättningar<textarea value={draft.searchConditions} onChange={event => update({ searchConditions: event.target.value })} rows={4} /></label><div className="inline-edit-actions"><button type="button" onClick={save} disabled={saving}>Spara</button><button type="button" className="cancel-inline-edit" onClick={cancel}>Avbryt</button></div></> : <>{viewField('Namn', draft.name, 'investigation-name')}{viewField('Status', investigationStatusLabel(investigation.status))}{viewField('Beskrivning', draft.description, 'investigation-description')}{viewField('Starttid', formatDateTime(draft.startsAt))}{viewField('Sluttid', formatDateTime(draft.endsAt))}{viewField('Sökförutsättningar', draft.searchConditions, 'investigation-description')}</>}</section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>Arkivera sökinsats</button>}</>, target);
 }
 
 function InvestigationInlineSettings({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
@@ -349,6 +372,27 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, { error:
   }
 }
 
+function ReferencePointPlacement({ enabled, onPlace }: { enabled: boolean; onPlace: (latitude: number, longitude: number) => void }) {
+  useMapEvents({ click: event => { if (enabled) onPlace(event.latlng.lat, event.latlng.lng); } });
+  return null;
+}
+
+function ReferencePointLayers({ referencePoints }: { referencePoints: ReferencePoint[] }) {
+  const map = useMap();
+  useEffect(() => {
+    const layers = referencePoints.map(point => {
+      const marker = L.marker([point.latitude, point.longitude], {
+        title: `${point.type.toUpperCase()}: ${point.label}`,
+        icon: L.divIcon({ className: 'efp-reference-point', html: `<span>${point.type.toUpperCase()}</span>`, iconSize: [36, 36], iconAnchor: [18, 18] }),
+      }).addTo(map);
+      marker.bindTooltip(`${point.type.toUpperCase()}: ${escapeHtml(point.label)}`);
+      return marker;
+    });
+    return () => { layers.forEach(layer => layer.remove()); };
+  }, [map, referencePoints]);
+  return null;
+}
+
 function TrackLayers({ tracks, visibleTracks }: { tracks: Track[]; visibleTracks: Record<string, boolean> }) {
   const map = useMap();
   useEffect(() => {
@@ -387,12 +431,15 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
   const mergeSelectionMode = useRef(false);
   const mergeFirst = useRef<any | null>(null);
   const [textMode, setTextMode] = useState(false);
+  const [referencePointMode, setReferencePointMode] = useState<ReferencePoint['type'] | null>(null);
+  const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   const settings = useRef({ color, strokeStyle });
   const nextZoneNameRef = useRef(nextZoneName);
   settings.current = { color, strokeStyle };
   nextZoneNameRef.current = nextZoneName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
+  useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
   const styleFor = (layer: any) => ({ color: layer.options?.color ?? '#2563eb', weight: layer.options?.weight ?? 4, dashArray: layer.options?.dashArray });
@@ -654,12 +701,15 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
       if (!coordinates) continue;
       const geometryType = layer.__zone?.geometry?.type ?? (layer.toGeoJSON().geometry.type === 'LineString' ? 'LineString' : 'Polygon');
       const existing = layer.__zoneId ? layer.__zone as Zone | undefined : undefined;
+      if (geometryType === 'Polygon' && !isValidPolygonCoordinates(coordinates)) {
+        throw new Error(`Zonen "${existing?.name ?? layer.__zone?.name ?? 'Namnlös zon'}" har en ogiltig polygon. Kontrollera eller radera zonen innan du sparar.`);
+      }
       if (existing) {
         currentZoneIds.add(existing.id);
-        requests.push(fetch(`${API}/investigations/${investigationId}/zones/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, geometry: { type: geometryType, coordinates } }) }));
+        requests.push(fetch(`${API}/investigations/${investigationId}/zones/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, poa: existing.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
       } else {
         const pending = layer.__zone as Partial<Zone> | undefined;
-        requests.push(fetch(`${API}/investigations/${investigationId}/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: pending?.name ?? `Zon ${layers.length}`, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, geometry: { type: geometryType, coordinates } }) }));
+        requests.push(fetch(`${API}/investigations/${investigationId}/zones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: pending?.name ?? `Zon ${layers.length}`, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, poa: pending?.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
       }
     }
     for (const zoneId of initialServerZoneIds.current) {
@@ -682,10 +732,20 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     layer.remove();
     saveHistory();
   };
-  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
+  const saveReferencePoint = async (type: ReferencePoint['type'], latitude: number, longitude: number) => {
+    const labels: Record<ReferencePoint['type'], string> = { Pls: 'PLS', Lkp: 'LKP', Ipp: 'IPP' };
+    const label = window.prompt(`Namn på ${labels[type]}`, labels[type]);
+    if (label === null || !label.trim()) return;
+    const response = await fetch(`${API}/investigations/${investigationId}/reference-points`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, label: label.trim(), latitude, longitude }) });
+    if (!response.ok) { window.alert((await response.text()) || `Kunde inte spara ${labels[type]}.`); return; }
+    const created = await response.json() as ReferencePoint;
+    setReferencePoints(current => [...current, created]);
+    setReferencePointMode(null);
+  };
+  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeZone, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeZone, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   const createZoneLayer = (zone: Zone) => zone.geometry.type === 'LineString'
     ? L.polyline(toLatLngs(zone.geometry.coordinates), { color: '#dc2626', weight: 4 })
@@ -709,7 +769,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
       if (!coordinates) return;
       const id = `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
       const isLine = shape === 'Line' || shape === 'LineString';
-      const zone: Zone = { id, name: nextZoneNameRef.current(), status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, areaKm2: isLine ? 0 : calculateAreaKm2(coordinates), lengthKm: isLine ? calculateLineLengthKm(coordinates) : undefined, geometry: { type: isLine ? 'LineString' : 'Polygon', coordinates } };
+      const zone: Zone = { id, name: nextZoneNameRef.current(), status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, poa: null, areaKm2: isLine ? 0 : calculateAreaKm2(coordinates), lengthKm: isLine ? calculateLineLengthKm(coordinates) : undefined, geometry: { type: isLine ? 'LineString' : 'Polygon', coordinates } };
       event.layer.__zone = zone;
       event.layer.__zoneId = undefined;
       configureZoneLayer(event.layer);
@@ -778,7 +838,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     );
     return () => { active = false; };
   }, [map, zones.length]);
-  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en zon och rita sedan en fri linje från kant till kant" aria-label="Dela zon: välj en zon och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela zon</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två zoner som delar en gemensam kant" aria-label="Slå ihop zoner: välj två angränsande zoner" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop zoner</button></>, toolbarTarget)}</>;
+  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en zon och rita sedan en fri linje från kant till kant" aria-label="Dela zon: välj en zon och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela zon</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två zoner som delar en gemensam kant" aria-label="Slå ihop zoner: välj två angränsande zoner" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop zoner</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
 }
 
 function TextPlacement({ enabled, onPlace }: { enabled: boolean; onPlace: (lat: number, lng: number) => void }) { useMapEvents({ click: event => { if (enabled) onPlace(event.latlng.lat, event.latlng.lng); } }); return null; }
@@ -817,6 +877,17 @@ function calculateAreaKm2(coordinates: number[][]): number {
   let area = 0;
   for (let index = 0; index < points.length - 1; index++) area += points[index][0] * points[index + 1][1] - points[index + 1][0] * points[index][1];
   return Math.abs(area) / 2;
+}
+function isValidPolygonCoordinates(coordinates: number[][]): boolean {
+  if (coordinates.length < 4) return false;
+  const distinct = new Set(coordinates.slice(0, -1).map(([lng, lat]) => `${lng.toFixed(7)},${lat.toFixed(7)}`));
+  if (distinct.size < 3) return false;
+  const first = coordinates[0]; const last = coordinates[coordinates.length - 1];
+  if (!first || !last || first[0] !== last[0] || first[1] !== last[1]) return false;
+  return Math.abs(coordinates.slice(0, -1).reduce((sum, current, index) => {
+    const next = coordinates[index + 1];
+    return sum + current[0] * next[1] - next[0] * current[1];
+  }, 0)) > 1e-12;
 }
 function escapeHtml(value: string): string { return value.replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] ?? character)); }
 

@@ -20,8 +20,9 @@ public static class ZoneEndpoints
         {
             if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
             if (request.Geometry is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = ["Geometry is required."] });
+            if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
             if (!TryCreateGeometry(request.Geometry, out var geometry, out var error)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = [error] });
-            var zone = new Zone { InvestigationId = investigationId, Name = request.Name.Trim(), Instructions = request.Instructions, Status = request.Status, SearchMethod = request.SearchMethod, Priority = request.Priority, AssignedGroup = request.AssignedGroup, Searched = request.Searched, SearchedAt = request.SearchedAt, Points = request.Points, ShowName = request.ShowName, ShowArea = request.ShowArea, Geometry = geometry };
+            var zone = new Zone { InvestigationId = investigationId, Name = request.Name.Trim(), Instructions = request.Instructions, Status = request.Status, SearchMethod = request.SearchMethod, Priority = request.Priority, AssignedGroup = request.AssignedGroup, Searched = request.Searched, SearchedAt = request.SearchedAt, Points = request.Points, ShowName = request.ShowName, ShowArea = request.ShowArea, Poa = request.Poa, Geometry = geometry };
             db.Zones.Add(zone); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/v1/investigations/{investigationId}/zones/{zone.Id}", ToResponse(zone));
         });
@@ -29,8 +30,9 @@ public static class ZoneEndpoints
         {
             var zone = await db.Zones.FirstOrDefaultAsync(x => x.Id == zoneId && x.InvestigationId == investigationId, ct);
             if (zone is null) return Results.NotFound();
+            if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
             if (!TryCreateGeometry(request.Geometry, out var geometry, out var error)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = [error] });
-            zone.Name = request.Name.Trim(); zone.Instructions = request.Instructions; zone.Status = request.Status; zone.SearchMethod = request.SearchMethod; zone.Priority = request.Priority; zone.AssignedGroup = request.AssignedGroup; zone.Searched = request.Searched; zone.SearchedAt = request.SearchedAt; zone.Points = request.Points; zone.ShowName = request.ShowName; zone.ShowArea = request.ShowArea; zone.Geometry = geometry; zone.UpdatedAt = DateTimeOffset.UtcNow;
+            zone.Name = request.Name.Trim(); zone.Instructions = request.Instructions; zone.Status = request.Status; zone.SearchMethod = request.SearchMethod; zone.Priority = request.Priority; zone.AssignedGroup = request.AssignedGroup; zone.Searched = request.Searched; zone.SearchedAt = request.SearchedAt; zone.Points = request.Points; zone.ShowName = request.ShowName; zone.ShowArea = request.ShowArea; zone.Poa = request.Poa; zone.Geometry = geometry; zone.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct); return Results.Ok(ToResponse(zone));
         });
         group.MapDelete("/{zoneId:guid}", async (Guid investigationId, Guid zoneId, EfpDbContext db, CancellationToken ct) =>
@@ -77,6 +79,7 @@ public static class ZoneEndpoints
         zone.Points,
         zone.ShowName,
         zone.ShowArea,
+        zone.Poa,
         AreaKm2 = CalculateSize(zone.Geometry),
         zone.UpdatedAt,
         Geometry = new
@@ -109,5 +112,5 @@ public static class ZoneEndpoints
     }
 }
 
-public sealed record ZoneRequest(string Name, string? Instructions, ZoneStatus Status, SearchMethod SearchMethod, int Priority, string? AssignedGroup, GeoJsonGeometry Geometry, bool Searched = false, DateTimeOffset? SearchedAt = null, int Points = 0, bool ShowName = false, bool ShowArea = false);
+public sealed record ZoneRequest(string Name, string? Instructions, ZoneStatus Status, SearchMethod SearchMethod, int Priority, string? AssignedGroup, GeoJsonGeometry Geometry, bool Searched = false, DateTimeOffset? SearchedAt = null, int Points = 0, bool ShowName = false, bool ShowArea = false, double? Poa = null);
 public sealed record GeoJsonGeometry(double[][] Coordinates, string? Type = null);
