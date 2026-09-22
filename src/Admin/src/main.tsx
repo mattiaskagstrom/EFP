@@ -225,9 +225,13 @@ function App() {
     if (!editor) return;
     setError('');
     setSaveConfirmation(false);
-    try { await editor.save(); await loadSelectedData(selected!); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Kunde inte spara kartändringarna.'); }
-    else { setSaveConfirmation(true); }
+    try {
+      await editor.save();
+      await loadSelectedData(selected!);
+      setSaveConfirmation(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Kunde inte spara kartändringarna.');
+    }
   };
   const discardMapChanges = async () => {
     if (!selected) return;
