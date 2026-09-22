@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # EFP Proxmox installer, designed for the community-scripts style of execution.
-# bash -c "$(curl -fsSL https://raw.githubusercontent.com/mattiaskagstrom/EFP/main/scripts/proxmox/efp-install.sh)"
+# bash -c "$(curl -fsSL https://raw.githubusercontent.com/mattiaskagstrom/EFP/refs/heads/master/scripts/proxmox/efp-install.sh)"
 set -Eeuo pipefail
 
 readonly REPO_URL_DEFAULT="https://github.com/mattiaskagstrom/EFP.git"
-readonly BRANCH_DEFAULT="main"
+readonly BRANCH_DEFAULT="master"
 readonly HOSTNAME_DEFAULT="efp"
 readonly BRIDGE_DEFAULT="vmbr0"
 readonly TEMPLATE_STORAGE_DEFAULT="local"

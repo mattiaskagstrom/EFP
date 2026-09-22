@@ -247,6 +247,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
   const initialServerZoneIds = useRef<string[]>([]);
   const textRemovalMode = useRef(false);
   const editSelectionMode = useRef(false);
+  const drawingMode = useRef(false);
   const editingLayer = useRef<any | null>(null);
   const splitSelectionMode = useRef(false);
   const splitTarget = useRef<any | null>(null);
@@ -321,6 +322,10 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
     layer.on('pm:edit pm:dragend', saveHistory);
     layer.on('pm:remove', saveHistory);
     layer.on('click', (event: any) => {
+      if (drawingMode.current) {
+        event.originalEvent?.stopPropagation?.();
+        return;
+      }
       if (layer.__zoneId && hiddenZoneIds[layer.__zoneId]) return;
       if (splitSelectionMode.current) {
         splitSelectionMode.current = false;
@@ -411,9 +416,9 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
     if (failed) throw new Error((await failed.text()) || `Kunde inte spara en eller flera zoner (HTTP ${failed.status}).`);
   };
   const discardChanges = () => { stop(); history.current = [history.current[0]]; historyIndex.current = 0; onReady(api); };
-  const stop = () => { textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; setTextMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
+  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; setTextMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
-    draw: mode => { stop(); geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
+    draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
     text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, split: () => { stop(); splitSelectionMode.current = true; }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   useEffect(() => {
@@ -424,6 +429,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
         splitZoneWithLine(event.layer, splitTarget.current);
         return;
       }
+      drawingMode.current = false;
       event.layer.pm?.enable?.({ allowSelfIntersection: false }); event.layer.on('pm:edit pm:dragend', saveHistory); event.layer.on('pm:remove', saveHistory); saveHistory(); onToolChange('none');
     };
     const onRemove = () => saveHistory();
