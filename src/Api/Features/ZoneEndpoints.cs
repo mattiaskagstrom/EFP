@@ -37,8 +37,9 @@ public static class ZoneEndpoints
         });
         group.MapDelete("/{zoneId:guid}", async (Guid investigationId, Guid zoneId, EfpDbContext db, CancellationToken ct) =>
         {
-            var zone = await db.Zones.FirstOrDefaultAsync(x => x.Id == zoneId && x.InvestigationId == investigationId, ct);
+            var zone = await db.Zones.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == zoneId && x.InvestigationId == investigationId, ct);
             if (zone is null) return Results.NotFound();
+            if (zone.IsDeleted) return Results.NoContent();
             zone.IsDeleted = true;
             zone.DeletedAt = DateTimeOffset.UtcNow;
             zone.UpdatedAt = DateTimeOffset.UtcNow;

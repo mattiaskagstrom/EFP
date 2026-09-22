@@ -697,12 +697,14 @@ function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, a
     const currentZoneIds = new Set<string>();
     const requests: Promise<Response>[] = [];
     for (const layer of layers) {
-      const coordinates = getZoneCoordinates(layer);
+      let coordinates = getZoneCoordinates(layer);
       if (!coordinates) continue;
       const geometryType = layer.__zone?.geometry?.type ?? (layer.toGeoJSON().geometry.type === 'LineString' ? 'LineString' : 'Polygon');
       const existing = layer.__zoneId ? layer.__zone as Zone | undefined : undefined;
-      if (geometryType === 'Polygon' && !isValidPolygonCoordinates(coordinates)) {
-        throw new Error(`Zonen "${existing?.name ?? layer.__zone?.name ?? 'Namnlös zon'}" har en ogiltig polygon. Kontrollera eller radera zonen innan du sparar.`);
+      if (geometryType === 'Polygon') {
+        const normalized = normalizePolygonCoordinates(coordinates);
+        if (!normalized) throw new Error(`Zonen "${existing?.name ?? layer.__zone?.name ?? 'Namnlös zon'}" har en ogiltig polygon. Kontrollera eller radera zonen innan du sparar.`);
+        coordinates = normalized;
       }
       if (existing) {
         currentZoneIds.add(existing.id);
@@ -878,16 +880,21 @@ function calculateAreaKm2(coordinates: number[][]): number {
   for (let index = 0; index < points.length - 1; index++) area += points[index][0] * points[index + 1][1] - points[index + 1][0] * points[index][1];
   return Math.abs(area) / 2;
 }
-function isValidPolygonCoordinates(coordinates: number[][]): boolean {
-  if (coordinates.length < 4) return false;
-  const distinct = new Set(coordinates.slice(0, -1).map(([lng, lat]) => `${lng.toFixed(7)},${lat.toFixed(7)}`));
-  if (distinct.size < 3) return false;
-  const first = coordinates[0]; const last = coordinates[coordinates.length - 1];
-  if (!first || !last || first[0] !== last[0] || first[1] !== last[1]) return false;
-  return Math.abs(coordinates.slice(0, -1).reduce((sum, current, index) => {
-    const next = coordinates[index + 1];
+function normalizePolygonCoordinates(coordinates: number[][]): number[][] | null {
+  const points = coordinates
+    .filter(point => point.length >= 2 && point.every(value => Number.isFinite(value)))
+    .map(([longitude, latitude]) => [longitude, latitude]);
+  if (points.length < 3) return null;
+  const first = points[0]; const last = points[points.length - 1];
+  const closeEnough = Math.abs(first[0] - last[0]) <= 1e-7 && Math.abs(first[1] - last[1]) <= 1e-7;
+  const ring = closeEnough ? [...points.slice(0, -1), [...first]] : [...points, [...first]];
+  const distinct = new Set(ring.slice(0, -1).map(([lng, lat]) => `${lng.toFixed(7)},${lat.toFixed(7)}`));
+  if (distinct.size < 3) return null;
+  const area = Math.abs(ring.slice(0, -1).reduce((sum, current, index) => {
+    const next = ring[index + 1];
     return sum + current[0] * next[1] - next[0] * current[1];
-  }, 0)) > 1e-12;
+  }, 0));
+  return area > 1e-12 ? ring : null;
 }
 function escapeHtml(value: string): string { return value.replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] ?? character)); }
 
