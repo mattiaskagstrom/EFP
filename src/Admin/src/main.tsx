@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { featureCollection } from '@turf/helpers';
@@ -12,7 +13,7 @@ import './styles.css';
 import './export-order.css';
 import { filterZonesByName } from './zoneSearch';
 
-type Investigation = { id: string; name: string; status: string; description?: string };
+type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null };
 type Zone = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; areaKm2?: number; geometry: { coordinates: number[][] } };
 type Track = { id: string; callsign?: string; sourceFile?: string; geometry: { type: 'LineString'; coordinates: number[][] } };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
@@ -21,11 +22,14 @@ type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
 type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; zoneId?: string; zone?: Partial<Zone>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
 type ZoneDetails = Pick<Zone, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; split: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeZone: (zoneId: string) => void; split: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateZoneDetails: (zoneId: string, details: ZoneDetails) => void; simplifyZone: (zoneId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 const center: [number, number] = [59.33, 18.06];
 const strokeMap: Record<StrokeStyle, string | undefined> = { solid: undefined, dash: '12 8', dot: '2 8', dashdot: '12 6 2 6' };
+const toDateTimeLocal = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : '';
+const formatDateTime = (value: string) => value ? new Date(value).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : '';
+const investigationStatusLabel = (status: string) => ({ Planned: 'Planerad', Active: 'Aktiv', Paused: 'Pausad', Closed: 'Avslutad', Archived: 'Arkiverad' }[status] ?? status);
 
 function App() {
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
@@ -47,6 +51,8 @@ function App() {
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Record<string, boolean>>({});
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const [zoneSearch, setZoneSearch] = useState('');
+  const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '' });
+  const [investigationSaving, setInvestigationSaving] = useState(false);
 
   const load = async () => setInvestigations(await fetch(`${API}/investigations`).then(r => r.json()));
   useEffect(() => { void load(); }, []);
@@ -68,7 +74,7 @@ function App() {
     setTracks(loadedTracks);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
   };
-  useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) void loadSelectedData(selected); else { setZones([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
+  useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt) }); void loadSelectedData(selected); } else { setZones([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => {
     const repaintAfterFileDialog = () => {
@@ -124,6 +130,27 @@ function App() {
     if (!response.ok) return setError(await response.text());
     const created = await response.json() as Investigation;
     setName(''); await load(); setSelected(created);
+  };
+  const saveInvestigation = async () => {
+    if (!selected || !investigationDraft.name.trim()) return setError('Insatsens namn måste anges.');
+    if (investigationDraft.startsAt && investigationDraft.endsAt && investigationDraft.endsAt < investigationDraft.startsAt) return setError('Sluttiden måste vara efter starttiden.');
+    setInvestigationSaving(true); setError('');
+    try {
+      const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: investigationDraft.name.trim(), description: investigationDraft.description || null, startsAt: investigationDraft.startsAt ? new Date(investigationDraft.startsAt).toISOString() : null, endsAt: investigationDraft.endsAt ? new Date(investigationDraft.endsAt).toISOString() : null }) });
+      if (!response.ok) throw new Error((await response.text()) || 'Kunde inte spara insatsens inställningar.');
+      const updated = await response.json() as Investigation;
+      setSelected(updated); await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Kunde inte spara insatsens inställningar.'); }
+    finally { setInvestigationSaving(false); }
+  };
+  const changeInvestigationStatus = async (status: string) => {
+    if (!selected) return;
+    if (status === 'Archived' && !window.confirm(`Är du säker på att du vill arkivera sökinsatsen "${selected.name}"?`)) return;
+    setError('');
+    const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    if (!response.ok) { setError((await response.text()) || 'Kunde inte ändra insatsens status.'); return; }
+    const updated = await response.json() as Investigation;
+    setSelected(updated); await load();
   };
   const saveLatestZone = async () => {
     if (!selected) return setError('Välj en sökinsats först.');
@@ -181,6 +208,14 @@ function App() {
   const deleteZone = async (zone: Zone) => {
     if (!selected || !window.confirm(`Är du säker på att du vill radera zonen "${zone.name}"?`)) return;
     setError('');
+    if (zone.id.startsWith('draft-')) {
+      editor?.removeZone(zone.id);
+      setZones(current => current.filter(item => item.id !== zone.id));
+      setZoneDrafts(current => { const next = { ...current }; delete next[zone.id]; return next; });
+      if (selectedZoneId === zone.id) setSelectedZoneId(null);
+      if (expandedZoneId === zone.id) setExpandedZoneId(null);
+      return;
+    }
     const response = await fetch(`${API}/investigations/${selected.id}/zones/${zone.id}`, { method: 'DELETE' });
     if (!response.ok) { setError((await response.text()) || `Kunde inte radera zonen (HTTP ${response.status}).`); return; }
     if (selectedZoneId === zone.id) setSelectedZoneId(null);
@@ -190,7 +225,9 @@ function App() {
   const toggleZoneVisibility = (zoneId: string) => setHiddenZoneIds(current => ({ ...current, [zoneId]: !current[zoneId] }));
   const selectZone = (zoneId: string) => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); };
   const addPendingZone = (zone: Zone) => {
-    setZones(current => [...current, zone]);
+    setZones(current => current.some(item => item.id === zone.id)
+      ? current.map(item => item.id === zone.id ? zone : item)
+      : [...current, zone]);
     setZoneDrafts(current => ({ ...current, [zone.id]: { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea } }));
     setSelectedZoneId(zone.id);
     setExpandedZoneId(zone.id);
@@ -204,6 +241,12 @@ function App() {
   };
   const selectedMapLayer = mapLayers[mapType];
   const matchingZones = filterZonesByName(zones, zoneSearch, Object.fromEntries(Object.entries(zoneDrafts).map(([id, draft]) => [id, draft.name])));
+  const nextZoneName = () => {
+    const names = new Set(zones.map(zone => (zoneDrafts[zone.id]?.name ?? zone.name).trim().toLocaleLowerCase()));
+    let number = 1;
+    while (names.has(`zon ${number}`)) number += 1;
+    return `Zon ${number}`;
+  };
 
   if (!selected) return <main className="selection-screen">
     <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>
@@ -214,8 +257,54 @@ function App() {
   return <main className="app-shell">
     <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>
     {error && <p className="error">{error}</p>}
-    <div className="layout"><aside className="investigation-sidebar"><button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button><h2>{selected.name}</h2><small>{selected.status}</small><section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>Spara ändringar</button><button className="discard-button" onClick={() => void discardMapChanges()}>Släng ändringar</button></section><section className="sidebar-section zones-section"><button className="zones-section-toggle" onClick={() => setZonesExpanded(current => !current)}><h3>Zoner</h3><span aria-hidden="true">{zonesExpanded ? '▴' : '▾'}</span></button>{zonesExpanded && <><input className="zone-search" type="search" value={zoneSearch} onChange={event => setZoneSearch(event.target.value)} placeholder="Sök zon-namn" aria-label="Sök zon-namn" />{zones.length === 0 ? <p className="muted">Inga zoner i sökinsatsen.</p> : matchingZones.length === 0 ? <p className="muted">Inga zoner matchar sökningen.</p> : matchingZones.map(zone => { const draft = zoneDrafts[zone.id] ?? { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea }; const expanded = expandedZoneId === zone.id; const hidden = hiddenZoneIds[zone.id] === true; return <article className={`zone-card ${selectedZoneId === zone.id ? 'selected' : ''}`} key={zone.id}><button className="zone-card-header" onClick={() => { setSelectedZoneId(zone.id); setExpandedZoneId(expanded ? null : zone.id); }}><span>{draft.name || 'Namnlös zon'}</span><span className="zone-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>{expanded && <div className="zone-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateZoneDraft(zone.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateZoneDraft(zone.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateZoneDraft(zone.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateZoneDraft(zone.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateZoneDraft(zone.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateZoneDraft(zone.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><label>Förenkling (meter)<input type="number" min="0.1" step="0.1" value={simplifyTolerance} onChange={event => setSimplifyTolerance(Math.max(0.1, Number(event.target.value) || 0.1))} /></label><button className="simplify-button" onClick={() => editor?.simplifyZone(zone.id, simplifyTolerance)}>Förenkla polygon</button><div className="zone-card-actions"><button onClick={() => toggleZoneVisibility(zone.id)}>{hidden ? 'Visa zon i kartan' : 'Dölj zon i kartan'}</button><button className="danger-button" onClick={() => void deleteZone(zone)}>Radera zon</button></div></div>}</article>; })}</>}</section><details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Zoner</strong><a href={`${API}/investigations/${selected.id}/zones.geojson`}>GeoJSON</a><a href={`${API}/investigations/${selected.id}/zones.gpx`}>GPX</a><a href={`${API}/investigations/${selected.id}/zones.garmin.gpx`}>Garmin GPX</a><strong>Spår</strong><a href={`${API}/investigations/${selected.id}/tracks.gpx`}>GPX</a><a href={`${API}/investigations/${selected.id}/tracks.garmin.gpx`}>Garmin GPX</a><a href={`${API}/investigations/${selected.id}/tracks.geojson`}>GeoJSON</a></div></details><section className="sidebar-section"><h3>Importera zoner från GPX</h3><input id="gpx-zone-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importZoneGpx(event)} /><label className="file-button" htmlFor="gpx-zone-import">Välj zon-GPX-fil</label><p className="muted">GPX-spår som bildar polygoner importeras som redigerbara zoner.</p></section><section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length === 0 ? <p className="muted">Inga spårimporter ännu.</p> : <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span></label>)}</div>}</section></aside><div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} zones={zones} activeTool={activeTool} onToolChange={setActiveTool} selectedZoneId={selectedZoneId} hiddenZoneIds={hiddenZoneIds} onZoneSelect={zoneId => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><div className="map-toolbar-group"><button className={activeTool === 'Polygon' ? 'active' : ''} title="Rita polygon" onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} title="Rita fyrkant" onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} title="Rita cirkel" onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} title="Rita sträcka" onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} title="Placera text" onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button></div><div className="map-toolbar-group"><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label></div><div className="map-toolbar-group"><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div></div></div>
+    <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
+    <div className="layout"><aside className="investigation-sidebar"><button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button><h2>{selected.name}</h2><small>{selected.status}</small><section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>Spara ändringar</button><button className="discard-button" onClick={() => void discardMapChanges()}>Släng ändringar</button></section><section className="sidebar-section zones-section"><button className="zones-section-toggle" onClick={() => setZonesExpanded(current => !current)}><h3>Zoner</h3><span aria-hidden="true">{zonesExpanded ? '▴' : '▾'}</span></button>{zonesExpanded && <><input className="zone-search" type="search" value={zoneSearch} onChange={event => setZoneSearch(event.target.value)} placeholder="Sök zon-namn" aria-label="Sök zon-namn" />{zones.length === 0 ? <p className="muted">Inga zoner i sökinsatsen.</p> : matchingZones.length === 0 ? <p className="muted">Inga zoner matchar sökningen.</p> : matchingZones.map(zone => { const draft = zoneDrafts[zone.id] ?? { name: zone.name, searched: zone.searched, searchedAt: zone.searchedAt ?? null, points: zone.points, showName: zone.showName, showArea: zone.showArea }; const expanded = expandedZoneId === zone.id; const hidden = hiddenZoneIds[zone.id] === true; return <article className={`zone-card ${selectedZoneId === zone.id ? 'selected' : ''}`} key={zone.id}><button className="zone-card-header" onClick={() => { setSelectedZoneId(zone.id); setExpandedZoneId(expanded ? null : zone.id); }}><span>{draft.name || 'Namnlös zon'}</span><span className="zone-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>{expanded && <div className="zone-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateZoneDraft(zone.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateZoneDraft(zone.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateZoneDraft(zone.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateZoneDraft(zone.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateZoneDraft(zone.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateZoneDraft(zone.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><label>Förenkling (meter)<input type="number" min="0.1" step="0.1" value={simplifyTolerance} onChange={event => setSimplifyTolerance(Math.max(0.1, Number(event.target.value) || 0.1))} /></label><button className="simplify-button" onClick={() => editor?.simplifyZone(zone.id, simplifyTolerance)}>Förenkla polygon</button><div className="zone-card-actions"><button onClick={() => toggleZoneVisibility(zone.id)}>{hidden ? 'Visa zon i kartan' : 'Dölj zon i kartan'}</button><button className="danger-button" onClick={() => void deleteZone(zone)}>Radera zon</button></div></div>}</article>; })}</>}</section><details className="sidebar-section export-section"><summary>Exportera</summary><div className="export-links"><strong>Zoner</strong><a href={`${API}/investigations/${selected.id}/zones.geojson`}>GeoJSON</a><a href={`${API}/investigations/${selected.id}/zones.gpx`}>GPX</a><a href={`${API}/investigations/${selected.id}/zones.garmin.gpx`}>Garmin GPX</a><strong>Spår</strong><a href={`${API}/investigations/${selected.id}/tracks.gpx`}>GPX</a><a href={`${API}/investigations/${selected.id}/tracks.garmin.gpx`}>Garmin GPX</a><a href={`${API}/investigations/${selected.id}/tracks.geojson`}>GeoJSON</a></div></details><section className="sidebar-section"><h3>Importera zoner från GPX</h3><input id="gpx-zone-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importZoneGpx(event)} /><label className="file-button" htmlFor="gpx-zone-import">Välj zon-GPX-fil</label><p className="muted">GPX-spår som bildar polygoner importeras som redigerbara zoner.</p></section><section className="sidebar-section"><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label>{tracks.length === 0 ? <p className="muted">Inga spårimporter ännu.</p> : <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span></label>)}</div>}</section></aside><div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} zones={zones} nextZoneName={nextZoneName} activeTool={activeTool} onToolChange={setActiveTool} selectedZoneId={selectedZoneId} hiddenZoneIds={hiddenZoneIds} onZoneSelect={zoneId => { setSelectedZoneId(zoneId); setExpandedZoneId(zoneId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><div className="map-toolbar-group"><button className={activeTool === 'Polygon' ? 'active' : ''} title="Rita polygon" onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} title="Rita fyrkant" onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} title="Rita cirkel" onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} title="Rita sträcka" onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} title="Placera text" onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button></div><div className="map-toolbar-group"><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label></div><div className="map-toolbar-group"><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div></div></div>
   </main>;
+}
+
+type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string };
+
+function InvestigationInlineSettingsV2({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [original, setOriginal] = useState(draft);
+  useEffect(() => { setTarget(document.querySelector<HTMLElement>('.investigation-sidebar')); }, []);
+  const beginEditing = () => { setOriginal(draft); setEditing(true); };
+  const cancel = () => { onDraftChange(original); setEditing(false); };
+  const save = () => { setEditing(false); onSave(); };
+  const update = (changes: Partial<InvestigationDraft>) => onDraftChange(current => ({ ...current, ...changes }));
+  const viewField = (label: string, value: string, className = '') => <div className={`stacked-setting ${className}`}><span className="stacked-setting-label">{label}</span><span className="stacked-setting-value">{value || 'Inte angivet'}</span></div>;
+  if (!target) return null;
+  return createPortal(<><section className="sidebar-section investigation-settings-v2"><h3>Insats <button type="button" className="edit-icon section-edit-icon" title="Redigera insats" aria-label="Redigera insats" onClick={beginEditing}>✎</button></h3>{editing ? <><label className="stacked-setting">Namn<input autoFocus value={draft.name} onChange={event => update({ name: event.target.value })} /></label><label className="stacked-setting">Status<select value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select></label><label className="stacked-setting">Beskrivning<textarea value={draft.description} onChange={event => update({ description: event.target.value })} rows={3} /></label><label className="stacked-setting">Starttid<input type="datetime-local" value={draft.startsAt} onChange={event => update({ startsAt: event.target.value })} /></label><label className="stacked-setting">Sluttid<input type="datetime-local" value={draft.endsAt} onChange={event => update({ endsAt: event.target.value })} /></label><div className="inline-edit-actions"><button type="button" onClick={save} disabled={saving}>Spara</button><button type="button" className="cancel-inline-edit" onClick={cancel}>Avbryt</button></div></> : <>{viewField('Namn', draft.name, 'investigation-name')}{viewField('Status', investigationStatusLabel(investigation.status))}{viewField('Beskrivning', draft.description, 'investigation-description')}{viewField('Starttid', formatDateTime(draft.startsAt))}{viewField('Sluttid', formatDateTime(draft.endsAt))}</>}</section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>Arkivera sökinsats</button>}</>, target);
+}
+
+function InvestigationInlineSettings({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [original, setOriginal] = useState(draft);
+  useEffect(() => { setTarget(document.querySelector<HTMLElement>('.investigation-sidebar')); }, []);
+  useEffect(() => { if (!editing) setOriginal(draft); }, [draft, editing]);
+  if (!target) return null;
+  const edit = (field: string) => { setOriginal(draft); setEditing(field); };
+  const cancel = () => { onDraftChange(original); setEditing(null); };
+  const save = () => { setEditing(null); onSave(); };
+  const row = (field: keyof InvestigationDraft, label: string, value: string, input: React.ReactNode) => <div className="inline-setting"><span className="inline-setting-label">{label}</span>{editing === field ? <div className="inline-setting-editor">{input}<button type="button" title="Spara" aria-label={`Spara ${label}`} onClick={save}>✓</button><button type="button" title="Avbryt" aria-label={`Avbryt ${label}`} onClick={cancel}>×</button></div> : <><span className="inline-setting-value">{value || 'Inte angivet'}</span><button type="button" className="edit-icon" title={`Redigera ${label}`} aria-label={`Redigera ${label}`} onClick={() => edit(field)}>✎</button></>}</div>;
+  const changeStatus = (status: string) => { setEditing(null); onStatusChange(status); };
+  return createPortal(<><section className="sidebar-section investigation-settings"><h3>Insats</h3>{row('name', 'Namn', draft.name, <input autoFocus value={draft.name} onChange={event => onDraftChange(current => ({ ...current, name: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter') save(); }} />)}<div className="inline-setting"><span className="inline-setting-label">Status</span>{editing === 'status' ? <div className="inline-setting-editor"><select autoFocus value={investigation.status} onChange={event => changeStatus(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select><button type="button" title="Avbryt" aria-label="Avbryt statusredigering" onClick={() => setEditing(null)}>×</button></div> : <><span className="inline-setting-value">{investigationStatusLabel(investigation.status)}</span><button type="button" className="edit-icon" title="Redigera status" aria-label="Redigera status" onClick={() => edit('status')}>✎</button></>}</div>{row('description', 'Beskrivning', draft.description, <textarea autoFocus value={draft.description} onChange={event => onDraftChange(current => ({ ...current, description: event.target.value }))} rows={3} />)}{row('startsAt', 'Starttid', formatDateTime(draft.startsAt), <input autoFocus type="datetime-local" value={draft.startsAt} onChange={event => onDraftChange(current => ({ ...current, startsAt: event.target.value }))} />)}{row('endsAt', 'Sluttid', formatDateTime(draft.endsAt), <input autoFocus type="datetime-local" value={draft.endsAt} onChange={event => onDraftChange(current => ({ ...current, endsAt: event.target.value }))} />)}<button className="inline-save-all" onClick={onSave} disabled={saving}>{saving ? 'Sparar…' : 'Spara ändringar'}</button></section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>Arkivera sökinsats</button>}</>, target);
+}
+
+function InvestigationSettings({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [original, setOriginal] = useState(draft);
+  useEffect(() => { setTarget(document.querySelector<HTMLElement>('.investigation-sidebar')); }, []);
+  useEffect(() => { if (!editing) setOriginal(draft); }, [draft, editing]);
+  if (!target) return null;
+  const edit = (field: keyof InvestigationDraft) => { setOriginal(draft); setEditing(field); };
+  const cancel = () => { onDraftChange(original); setEditing(null); };
+  const save = () => { setEditing(null); onSave(); };
+  const row = (field: keyof InvestigationDraft, label: string, value: string, input: React.ReactNode) => <div className="inline-setting"><span className="inline-setting-label">{label}</span>{editing === field ? <div className="inline-setting-editor">{input}<button type="button" title="Spara" aria-label={`Spara ${label}`} onClick={save}>✓</button><button type="button" title="Avbryt" aria-label={`Avbryt ${label}`} onClick={cancel}>×</button></div> : <><span className="inline-setting-value">{value || 'Inte angivet'}</span><button type="button" className="edit-icon" title={`Redigera ${label}`} aria-label={`Redigera ${label}`} onClick={() => edit(field)}>✎</button></>}</div>;
+  return createPortal(<section className="sidebar-section investigation-settings"><h3>Insatsinställningar</h3>{row('name', 'Namn', draft.name, <input autoFocus value={draft.name} onChange={event => onDraftChange(current => ({ ...current, name: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter') save(); }} />)}{row('description', 'Beskrivning', draft.description, <textarea autoFocus value={draft.description} onChange={event => onDraftChange(current => ({ ...current, description: event.target.value }))} rows={3} />)}{row('startsAt', 'Starttid', formatDateTime(draft.startsAt), <input autoFocus type="datetime-local" value={draft.startsAt} onChange={event => onDraftChange(current => ({ ...current, startsAt: event.target.value }))} />)}{row('endsAt', 'Sluttid', formatDateTime(draft.endsAt), <input autoFocus type="datetime-local" value={draft.endsAt} onChange={event => onDraftChange(current => ({ ...current, endsAt: event.target.value }))} />)}<div className="inline-setting"><span className="inline-setting-label">Status</span><span className="inline-setting-value">{investigationStatusLabel(investigation.status)}</span><button type="button" className="edit-icon" title="Redigera status" aria-label="Redigera status" onClick={() => edit('status' as keyof InvestigationDraft)}>✎</button></div>{editing === 'status' && <div className="inline-setting-editor status-editor"><select autoFocus value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select><button type="button" title="Avbryt" aria-label="Avbryt statusredigering" onClick={() => setEditing(null)}>×</button></div>}{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>Arkivera sökinsats</button>}</section>, target);
 }
 
 class AppErrorBoundary extends React.Component<React.PropsWithChildren, { error: Error | null }> {
@@ -246,7 +335,7 @@ function limitTrackCoordinates(coordinates: number[][], maximum = 5000): number[
   return Array.from({ length: maximum }, (_, index) => coordinates[Math.round(index * step)]);
 }
 
-function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onToolChange, selectedZoneId, hiddenZoneIds, onZoneSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; zones: Zone[]; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedZoneId: string | null; hiddenZoneIds: Record<string, boolean>; onZoneSelect: (zoneId: string) => void; onReady: (api: EditorApi) => void }) {
+function MapEditor({ investigationId, color, strokeStyle, zones, nextZoneName, activeTool, onToolChange, selectedZoneId, hiddenZoneIds, onZoneSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; zones: Zone[]; nextZoneName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedZoneId: string | null; hiddenZoneIds: Record<string, boolean>; onZoneSelect: (zoneId: string) => void; onReady: (api: EditorApi) => void }) {
   const map = useMap();
   const persistedZoneKey = JSON.stringify(zones.filter(zone => !zone.id.startsWith('draft-')));
   const history = useRef<DrawingSnapshot[][]>([[]]);
@@ -263,7 +352,9 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
   const splitTarget = useRef<any | null>(null);
   const [textMode, setTextMode] = useState(false);
   const settings = useRef({ color, strokeStyle });
+  const nextZoneNameRef = useRef(nextZoneName);
   settings.current = { color, strokeStyle };
+  nextZoneNameRef.current = nextZoneName;
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
   const styleFor = (layer: any) => ({ color: layer.options?.color ?? '#2563eb', weight: layer.options?.weight ?? 4, dashArray: layer.options?.dashArray });
@@ -290,6 +381,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
   };
   const restore = (items: DrawingSnapshot[]) => {
     restoring.current = true; getLayers().forEach((layer: any) => layer.remove()); textLayers.current.forEach(layer => layer.remove()); textLayers.current = [];
+    const restoredDraftZones: Zone[] = [];
     items.forEach(item => {
       if (item.kind === 'text' && item.text && item.lat !== undefined && item.lng !== undefined) { addTextLayer(item.text, item.lat, item.lng); return; }
       if (!item.geometry) return;
@@ -301,9 +393,13 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
       if (item.zoneId) layer.__zoneId = item.zoneId;
       if (item.zone) layer.__zone = item.zone;
       geomanMap.pm?.reInitLayer?.(layer);
-      if (item.zone) configureZoneLayer(layer);
+      if (item.zone) {
+        configureZoneLayer(layer);
+        if (item.zone.id?.startsWith('draft-')) restoredDraftZones.push(item.zone as Zone);
+      }
     });
     restoring.current = false;
+    restoredDraftZones.forEach(zone => window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone })));
   };
   const undo = () => { if (historyIndex.current === 0) return; historyIndex.current -= 1; restore(history.current[historyIndex.current]); onReady(api); };
   const redo = () => { if (historyIndex.current >= history.current.length - 1) return; historyIndex.current += 1; restore(history.current[historyIndex.current]); onReady(api); };
@@ -416,6 +512,7 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
   };
   const saveChanges = async () => {
     const layers = getLayers();
+    const draftLayers = layers.filter((layer: any) => !layer.__zoneId && layer.__zone);
     const currentZoneIds = new Set<string>();
     const requests: Promise<Response>[] = [];
     for (const layer of layers) {
@@ -436,12 +533,24 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
     const responses = await Promise.all(requests);
     const failed = responses.find(response => !response.ok);
     if (failed) throw new Error((await failed.text()) || `Kunde inte spara en eller flera zoner (HTTP ${failed.status}).`);
+    // Nya zoner har först en lokal draft-geometri. När POST/PUT lyckats
+    // laddar App om serverdata, så draft-lagren måste tas bort här för att
+    // inte lämna kvar en blå spökgeometri utanför zonlistan.
+    restoring.current = true;
+    draftLayers.forEach((layer: any) => layer.remove());
+    restoring.current = false;
   };
   const discardChanges = () => { stop(); history.current = [history.current[0]]; historyIndex.current = 0; onReady(api); };
+  const removeZone = (zoneId: string) => {
+    const layer = getLayers().find((candidate: any) => candidate.__zone?.id === zoneId);
+    if (!layer) return;
+    layer.remove();
+    saveHistory();
+  };
   const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; setTextMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, split: () => { stop(); splitSelectionMode.current = true; }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeZone, split: () => { stop(); splitSelectionMode.current = true; }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateZoneDetails, simplifyZone, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   useEffect(() => {
     if (!geomanMap.pm) return;
@@ -461,11 +570,14 @@ function MapEditor({ investigationId, color, strokeStyle, zones, activeTool, onT
       const coordinates = getPolygonCoordinates(event.layer);
       if (!coordinates) return;
       const id = `draft-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
-      const zone: Zone = { id, name: `Zon ${zones.length + 1}`, status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
+      const zone: Zone = { id, name: nextZoneNameRef.current(), status: 'NotStarted', priority: zones.length + 1, searched: false, searchedAt: null, points: 0, showName: false, showArea: false, areaKm2: calculateAreaKm2(coordinates), geometry: { coordinates } };
       event.layer.__zone = zone;
       event.layer.__zoneId = undefined;
       configureZoneLayer(event.layer);
       window.dispatchEvent(new CustomEvent<Zone>('efp:zone-created', { detail: zone }));
+      // pm:create sparar en historikpost innan zonmetadata har kopplats på lagret.
+      // Spara därför en ny snapshot här så att undo kan återställa zonen som zon.
+      saveHistory();
     };
     map.on('pm:create', onCreate); map.on('pm:create', onNewPolygon); map.on('pm:remove', onRemove); onReady(api);
     return () => { map.off('pm:create', onCreate); map.off('pm:create', onNewPolygon); map.off('pm:remove', onRemove); };

@@ -45,6 +45,33 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task Investigation_contract_supports_editing_period_status_and_archiving()
+    {
+        var create = await client.PostAsJsonAsync("/api/v1/investigations", new { name = "Redigerbar insats", description = "Före ändring" });
+        var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var update = await client.PatchAsJsonAsync($"/api/v1/investigations/{id}", new
+        {
+            name = "Uppdaterad insats",
+            description = "Efter ändring",
+            startsAt = "2026-09-22T08:00:00Z",
+            endsAt = "2026-09-22T16:00:00Z",
+            status = "Active",
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var updated = await update.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Uppdaterad insats", updated.GetProperty("name").GetString());
+        Assert.Equal("Active", updated.GetProperty("status").GetString());
+        Assert.Equal("2026-09-22T08:00:00+00:00", updated.GetProperty("startsAt").GetString());
+
+        var archive = await client.PatchAsJsonAsync($"/api/v1/investigations/{id}", new { status = "Archived" });
+        Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+        Assert.Equal("Archived", (await archive.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+
+        var invalidPeriod = await client.PatchAsJsonAsync($"/api/v1/investigations/{id}", new { startsAt = "2026-09-22T17:00:00Z", endsAt = "2026-09-22T16:00:00Z" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPeriod.StatusCode);
+    }
+
+    [Fact]
     public async Task Zone_contract_supports_geometry_metadata_and_soft_delete()
     {
         var investigation = await CreateInvestigation();

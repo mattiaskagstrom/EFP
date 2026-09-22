@@ -13,9 +13,9 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Skapa en ny sökinsats från listvyn.
 - [x] Välja en sökinsats innan karta och insatsdata visas.
 - [x] Byta sökinsats och återgå till listan.
-- [ ] Redigera sökinsatsens namn, beskrivning och tidsperiod.
-- [ ] Ändra sökinsatsens status mellan planerad, aktiv, pausad, avslutad och arkiverad.
-- [ ] Arkivera sökinsatser.
+- [x] Redigera sökinsatsens namn, beskrivning och tidsperiod.
+- [x] Ändra sökinsatsens status mellan planerad, aktiv, pausad, avslutad och arkiverad.
+- [x] Arkivera sökinsatser.
 
 ### Karta och kartunderlag
 

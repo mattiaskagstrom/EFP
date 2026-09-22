@@ -12,6 +12,8 @@ public sealed class Investigation
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string Name { get; set; }
     public string? Description { get; set; }
+    public DateTimeOffset? StartsAt { get; set; }
+    public DateTimeOffset? EndsAt { get; set; }
     public InvestigationStatus Status { get; set; } = InvestigationStatus.Planned;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

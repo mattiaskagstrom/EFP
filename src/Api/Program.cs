@@ -26,6 +26,8 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "ShowArea" boolean NOT NULL DEFAULT FALSE;
         ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
         ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+        ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "StartsAt" timestamp with time zone NULL;
+        ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "EndsAt" timestamp with time zone NULL;
         """);
 }
 app.UseCors();
