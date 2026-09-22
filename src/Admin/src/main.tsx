@@ -55,6 +55,7 @@ function App() {
   const [hiddenZoneIds, setHiddenZoneIds] = useState<Record<string, boolean>>({});
   const [zonesExpanded, setZonesExpanded] = useState(true);
   const [zoneSearch, setZoneSearch] = useState('');
+  const [saveConfirmation, setSaveConfirmation] = useState(false);
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
   const [investigationSaving, setInvestigationSaving] = useState(false);
 
@@ -86,6 +87,11 @@ function App() {
   };
   useEffect(() => { setHiddenZoneIds({}); setZonesExpanded(true); setZoneSearch(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setZones([]); setReferencePoints([]); setZoneDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedZoneId(null); setExpandedZoneId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
+  useEffect(() => {
+    if (!saveConfirmation) return;
+    const timeout = window.setTimeout(() => setSaveConfirmation(false), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [saveConfirmation]);
   useEffect(() => {
     const repaintAfterFileDialog = () => {
       window.setTimeout(() => {
@@ -218,8 +224,10 @@ function App() {
   const saveMapChanges = async () => {
     if (!editor) return;
     setError('');
+    setSaveConfirmation(false);
     try { await editor.save(); await loadSelectedData(selected!); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Kunde inte spara kartändringarna.'); }
+    else { setSaveConfirmation(true); }
   };
   const discardMapChanges = async () => {
     if (!selected) return;
@@ -298,7 +306,7 @@ function App() {
     <div className="layout">
       <aside className="investigation-sidebar">
         <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button>
-        <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>Spara ändringar</button><button className="discard-button" onClick={() => void discardMapChanges()}>Släng ändringar</button></section>
+        <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : 'Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>Släng ändringar</button></section>
         <section className="sidebar-section zones-section">
           <button className="zones-section-toggle" onClick={() => setZonesExpanded(current => !current)}><h3>Zoner</h3><span aria-hidden="true">{zonesExpanded ? '▴' : '▾'}</span></button>
           {zonesExpanded && <><input className="zone-search" type="search" value={zoneSearch} onChange={event => setZoneSearch(event.target.value)} placeholder="Sök zon-namn" aria-label="Sök zon-namn" />
