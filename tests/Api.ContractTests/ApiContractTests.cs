@@ -94,11 +94,13 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var gpx = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.gpx");
         var zonesGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.gpx");
         var garminGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.garmin.gpx");
+        var garminTracksGpx = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.garmin.gpx");
         var geoJson = await client.GetAsync($"/api/v1/investigations/{investigation}/zones.geojson");
         Assert.Equal("application/gpx+xml", gpx.Content.Headers.ContentType?.MediaType);
         Assert.Contains("creator=\"EFP Garmin export\"", await zonesGpx.Content.ReadAsStringAsync());
         Assert.Equal("application/gpx+xml", garminGpx.Content.Headers.ContentType?.MediaType);
         Assert.Contains("creator=\"EFP Garmin export\"", await garminGpx.Content.ReadAsStringAsync());
+        Assert.Equal("application/gpx+xml", garminTracksGpx.Content.Headers.ContentType?.MediaType);
         Assert.Equal("application/json", geoJson.Content.Headers.ContentType?.MediaType);
         Assert.Contains("FeatureCollection", await geoJson.Content.ReadAsStringAsync());
     }

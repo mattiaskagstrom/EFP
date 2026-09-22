@@ -22,6 +22,7 @@ public static class ImportExportEndpoints
         group.MapGet("/zones.garmin.gpx", ExportZonesGarminGpxAsync);
         group.MapGet("/tracks.geojson", ExportTracksGeoJsonAsync);
         group.MapGet("/tracks.gpx", ExportTracksGpxAsync);
+        group.MapGet("/tracks.garmin.gpx", ExportTracksGpxAsync);
         return endpoints;
     }
 

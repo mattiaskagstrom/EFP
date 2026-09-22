@@ -79,6 +79,7 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Förhandsgranska import innan den sparas.
 - [ ] Hantera dubbletter och partiellt felaktiga importer med tydlig återkoppling.
 - [x] Exportera spår som GPX.
+- [x] Exportera spår som Garmin GPX (samma spårformat, med separat tydlig användarlänk).
 - [x] Exportera zoner som GPX.
 - [x] Exportera zoner som Garmin-anpassad GPX där varje polygon representeras som en sluten track.
 - [x] Exportera zoner som GeoJSON.
