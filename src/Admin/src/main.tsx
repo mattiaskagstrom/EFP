@@ -21,16 +21,16 @@ import { validateTrackFile } from './trackUpload';
 type Investigation = { id: string; name: string; status: string; isPublic?: boolean; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type InvestigationAdmin = { id: string; username: string; isOwner: boolean; createdAt: string };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
-type Finding = { id: string; submittedBy: string; description?: string | null; observedAt: string; submittedAt: string; imageUrl: string; longitude: number; latitude: number };
+type Finding = { id: string; submittedBy: string; description?: string | null; observedAt: string; submittedAt: string; hasImage?: boolean; imageUrl?: string | null; longitude: number; latitude: number };
 type Sector = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
 type InvestigationMap = { id: string; name: string; contentType: string; west: number; south: number; east: number; north: number; imageUrl: string };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
-type ActiveTool = 'none' | DrawMode | 'Text' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
+type ActiveTool = 'none' | DrawMode | 'Text' | 'Finding' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
 type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
 type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; sectorId?: string; sector?: Partial<Sector>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
 type SectorDetails = Pick<Sector, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; placeFinding: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 // Admin cookies must be sent in local development where the API and Vite use
@@ -71,6 +71,7 @@ function App() {
   const [checkedSectorIds, setCheckedSectorIds] = useState<string[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
+  const [findingImages, setFindingImages] = useState<Record<string, File | null>>({});
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
   const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
   const [invalidSectorIds, setInvalidSectorIds] = useState<string[]>([]);
@@ -158,7 +159,7 @@ function App() {
     setExpandedTrackId(null);
     setCheckedSectorIds([]);
   };
-  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFindingIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setFindings([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFindingIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); setFindingImages({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setFindings([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => { if (editor) setInvalidSectorIds(editor.getInvalidSectorIds()); }, [editor, sectors]);
   useEffect(() => {
@@ -205,7 +206,9 @@ function App() {
     };
     window.addEventListener('efp:sector-created', onSectorCreated);
     window.addEventListener('efp:sector-removed', onSectorRemoved);
-    return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); };
+    const onFindingPlaced = (event: Event) => { const finding = (event as CustomEvent<{ latitude: number; longitude: number }>).detail; if (finding) addFindingAt(finding.latitude, finding.longitude); };
+    window.addEventListener('efp:finding-placed', onFindingPlaced);
+    return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); window.removeEventListener('efp:finding-placed', onFindingPlaced); };
   }, []);
 
   useEffect(() => {
@@ -235,6 +238,24 @@ function App() {
     setName(''); await load(); selectInvestigation(created, 'admin');
   };
   const go = (path: string) => navigateTo(path);
+  const addFindingAt = (latitude: number, longitude: number) => {
+    const id = `draft-finding-${Date.now()}`;
+    setFindings(current => [{ id, submittedBy: adminIdentity?.userName ?? 'Admin', description: '', observedAt: new Date().toISOString(), submittedAt: new Date().toISOString(), imageUrl: '', longitude, latitude }, ...current]);
+    setFindingImages(current => ({ ...current, [id]: null }));
+  };
+  const updateFinding = (id: string, patch: Partial<Finding>) => setFindings(current => current.map(finding => finding.id === id ? { ...finding, ...patch } : finding));
+  const saveFinding = async (finding: Finding) => {
+    if (!selected) return;
+    const form = new FormData(); form.append('latitude', String(finding.latitude)); form.append('longitude', String(finding.longitude)); form.append('observedAt', new Date(finding.observedAt).toISOString()); form.append('description', finding.description ?? '');
+    const image = findingImages[finding.id]; if (image) form.append('image', image);
+    const isDraft = finding.id.startsWith('draft-');
+    const response = await fetch(`${API}/investigations/${selected.id}/findings${isDraft ? '' : `/${finding.id}`}`, { method: isDraft ? 'POST' : 'PATCH', body: form });
+    if (!response.ok) { setError((await response.text()) || 'Fyndet kunde inte sparas.'); return; }
+    const saved = await response.json() as Finding;
+    setFindings(current => current.map(item => item.id === finding.id ? saved : item));
+    setFindingImages(current => { const next = { ...current }; delete next[finding.id]; return next; });
+    setError('');
+  };
   const selectInvestigation = (investigation: Investigation, role: AppRole) => {
     setSelected(investigation);
     go(investigationPath(role, investigation.id));
@@ -506,7 +527,7 @@ function App() {
             })}</div></>}
         </section>
         <section className="sidebar-section tracks-section"><button type="button" className="tracks-section-toggle" aria-expanded={tracksExpanded} onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && <TrackList tracks={tracks} visibleTracks={visibleTracks} onVisibleChange={(trackId, visible) => setVisibleTracks(current => ({ ...current, [trackId]: visible }))} selectedTrackId={selectedTrackId} expandedTrackId={expandedTrackId} onSelect={setSelectedTrackId} onToggleExpanded={trackId => setExpandedTrackId(current => current === trackId ? null : trackId)} onUpdatePod={(track, value) => { void updateTrackPod(track, value); }} />}</section>
-        <details className="sidebar-section collapsible-sidebar-section"><summary>Fynd ({findings.length})</summary><div className="collapsible-sidebar-content">{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : <ul className="upload-history-list">{findings.map(finding => <li key={finding.id}><img className="finding-thumbnail" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="" /><strong>{finding.submittedBy}</strong><span>{formatDateTime(finding.observedAt)} · {finding.latitude.toFixed(5)}, {finding.longitude.toFixed(5)}</span>{finding.description && <small>{finding.description}</small>}</li>)}</ul>}</div></details>
+        <FindingList findings={findings} imageFiles={findingImages} onImageChange={(id, file) => setFindingImages(current => ({ ...current, [id]: file }))} onChange={updateFinding} onSave={finding => void saveFinding(finding)} />
         <details className="sidebar-section own-maps-section"><summary>Egna kartor</summary><div className="own-map-upload"><label>Västlig longitud<input type="number" step="any" value={mapBounds.west} onChange={event => setMapBounds(current => ({ ...current, west: event.target.value }))} /></label><label>Sydlig latitud<input type="number" step="any" value={mapBounds.south} onChange={event => setMapBounds(current => ({ ...current, south: event.target.value }))} /></label><label>Östlig longitud<input type="number" step="any" value={mapBounds.east} onChange={event => setMapBounds(current => ({ ...current, east: event.target.value }))} /></label><label>Nordlig latitud<input type="number" step="any" value={mapBounds.north} onChange={event => setMapBounds(current => ({ ...current, north: event.target.value }))} /></label><input id="own-map-upload" className="file-input" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={event => void uploadOwnMap(event)} /><label className="file-button" htmlFor="own-map-upload">Ladda upp kartbild</label></div>{ownMaps.length === 0 ? <p className="muted">Inga egna kartor uppladdade.</p> : <div className="own-map-list">{ownMaps.map(map => <div className="own-map-item" key={map.id}><label><input type="checkbox" checked={visibleOwnMaps[map.id] ?? true} onChange={event => setVisibleOwnMaps(current => ({ ...current, [map.id]: event.target.checked }))} /> {map.name}</label><button type="button" className="danger-button" onClick={() => void deleteOwnMap(map)}>Radera</button></div>)}</div>}</details>
         <ExportPanel sectors={sectors} tracks={tracks} findings={findings} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, findingIds: exportFindingIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFindingIdsChange={setExportFindingIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} getFindingUrl={format => format.findings(API, selected.id, exportSelection)} />
         <details className="sidebar-section import-section"><summary>Importera</summary><div className="import-links"><section><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section><section><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label></section></div></details>
@@ -848,6 +869,11 @@ function ReferencePointPlacement({ enabled, onPlace }: { enabled: boolean; onPla
   return null;
 }
 
+function FindingPlacement({ enabled }: { enabled: boolean }) {
+  useMapEvents({ click: event => { if (enabled) { window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { latitude: event.latlng.lat, longitude: event.latlng.lng } })); } } });
+  return null;
+}
+
 function ReferencePointLayers({ referencePoints }: { referencePoints: ReferencePoint[] }) {
   const map = useMap();
   useEffect(() => {
@@ -866,6 +892,10 @@ function ReferencePointLayers({ referencePoints }: { referencePoints: ReferenceP
 
 function FindingLayers({ findings }: { findings: Finding[] }) {
   return <>{findings.map(finding => <CircleMarker key={finding.id} center={[finding.latitude, finding.longitude]} radius={8} pathOptions={{ color: '#dc2626', fillColor: '#f87171', fillOpacity: 0.9 }}><Popup><strong>Fynd</strong><br />{finding.submittedBy}<br />{formatDateTime(finding.observedAt)}{finding.description && <><br />{finding.description}</>}</Popup></CircleMarker>)}</>;
+}
+
+function FindingList({ findings, imageFiles, onImageChange, onChange, onSave }: { findings: Finding[]; imageFiles: Record<string, File | null>; onImageChange: (id: string, file: File | null) => void; onChange: (id: string, patch: Partial<Finding>) => void; onSave: (finding: Finding) => void }) {
+  return <details className="sidebar-section collapsible-sidebar-section"><summary>Fynd ({findings.length})</summary><div className="collapsible-sidebar-content">{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : findings.map(finding => <article className="finding-card" key={finding.id}><div className="finding-card-heading"><strong>{finding.submittedBy}</strong><span>{finding.id.startsWith('draft-') ? 'Nytt fynd' : formatDateTime(finding.submittedAt)}</span></div>{finding.imageUrl && <img className="finding-image" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="Bild för fyndet" />}{imageFiles[finding.id] && <small>{imageFiles[finding.id]?.name}</small>}<label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => onImageChange(finding.id, event.target.files?.[0] ?? null)} /></label><label>Latitud<input type="number" step="any" value={finding.latitude} onChange={event => onChange(finding.id, { latitude: Number(event.target.value) })} /></label><label>Longitud<input type="number" step="any" value={finding.longitude} onChange={event => onChange(finding.id, { longitude: Number(event.target.value) })} /></label><label>Tidpunkt<input type="datetime-local" value={finding.observedAt.slice(0, 16)} onChange={event => onChange(finding.id, { observedAt: new Date(event.target.value).toISOString() })} /></label><label>Beskrivning<textarea rows={3} value={finding.description ?? ''} onChange={event => onChange(finding.id, { description: event.target.value })} /></label><button type="button" onClick={() => onSave(finding)}>Spara fynd</button></article>)}</div></details>;
 }
 
 function TrackLayers({ tracks, visibleTracks, selectedTrackId, onTrackSelect }: { tracks: Track[]; visibleTracks: Record<string, boolean>; selectedTrackId: string | null; onTrackSelect: (trackId: string) => void }) {
@@ -917,14 +947,24 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const mergeFirst = useRef<any | null>(null);
   const [textMode, setTextMode] = useState(false);
   const [referencePointMode, setReferencePointMode] = useState<ReferencePoint['type'] | null>(null);
+  const [findingMode, setFindingMode] = useState(false);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [mapFindings, setMapFindings] = useState<Finding[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
+  useMapEvents({ click: event => { if (findingMode) { window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { latitude: event.latlng.lat, longitude: event.latlng.lng } })); setFindingMode(false); onToolChange('none'); } } });
   const settings = useRef({ color, strokeStyle });
   const nextSectorNameRef = useRef(nextSectorName);
   settings.current = { color, strokeStyle };
   nextSectorNameRef.current = nextSectorName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
+  useEffect(() => {
+    if (!toolbarTarget) return;
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = '📍 Fynd'; button.setAttribute('aria-label', 'Placera fynd på kartan');
+    button.onclick = () => { onToolChange('Finding'); api.placeFinding(); };
+    toolbarTarget.appendChild(button);
+    return () => { button.remove(); };
+  }, [toolbarTarget]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
   useEffect(() => {
@@ -1255,10 +1295,10 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     setReferencePoints(current => [...current, created]);
     setReferencePointMode(null);
   };
-  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
+  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); setFindingMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, placeFinding: () => { stop(); setFindingMode(true); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   const createSectorLayer = (sector: Sector) => sector.geometry.type === 'LineString'
     ? L.polyline(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4 })

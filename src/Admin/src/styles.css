@@ -103,3 +103,8 @@ aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; }
 .finding-position { display: grid; grid-template-columns: 1fr 1fr auto; gap: .6rem; align-items: end; margin-bottom: .65rem; }
 .finding-position button { width: auto; margin: 0; }
 .finding-position-message { grid-column: 1 / -1; margin: 0; color: #1f5131; font-size: .85rem; }
+.finding-card { display: grid; gap: .45rem; padding: .65rem; border: 1px solid #dbe1ea; border-radius: .45rem; background: #fff; }
+.finding-card + .finding-card { margin-top: .55rem; }
+.finding-card-heading { display: flex; justify-content: space-between; gap: .5rem; }
+.finding-card-heading span { color: #667085; font-size: .75rem; }
+.finding-image { width: 100%; max-height: 10rem; object-fit: cover; border-radius: .3rem; }

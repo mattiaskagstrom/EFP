@@ -19,6 +19,7 @@ public static class FindingEndpoints
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
         group.MapGet("/findings", ListAsync);
         group.MapPost("/findings", CreateAsync).DisableAntiforgery();
+        group.MapPatch("/findings/{findingId:guid}", UpdateAsync).DisableAntiforgery().RequireAuthorization("Admin");
         group.MapGet("/findings/{findingId:guid}/image", ImageAsync);
         group.MapGet("/findings.geojson", ExportGeoJsonAsync);
         group.MapGet("/findings.gpx", ExportGpxAsync);
@@ -26,26 +27,43 @@ public static class FindingEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> CreateAsync(Guid investigationId, IFormFile image, [FromForm] double longitude, [FromForm] double latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, EfpDbContext db, HttpContext http, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(Guid investigationId, IFormFile? image, [FromForm] double longitude, [FromForm] double latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
-        if (image is null || image.Length == 0 || image.Length > MaxImageBytes) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara mellan 1 byte och 10 MB."] });
-        if (!ImageTypes.Contains(image.ContentType.ToLowerInvariant())) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara JPEG, PNG eller WebP."] });
+        var isAdmin = http.User.IsInRole("Admin") || http.User.IsInRole("Superadmin");
+        if (!isAdmin && (image is null || image.Length == 0)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["En bild måste bifogas."] });
+        if (image is not null && (image.Length == 0 || image.Length > MaxImageBytes)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara mellan 1 byte och 10 MB."] });
+        if (image is not null && !ImageTypes.Contains(image.ContentType.ToLowerInvariant())) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara JPEG, PNG eller WebP."] });
         if (!double.IsFinite(longitude) || longitude is < -180 or > 180 || !double.IsFinite(latitude) || latitude is < -90 or > 90) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = ["Positionen är ogiltig."] });
 
         var submittedBy = http.User.Identity?.IsAuthenticated == true
             ? http.User.Identity.Name ?? "Admin"
             : (await UserSessionService.FindAsync(http, db, ct))?.Callsign;
         if (string.IsNullOrWhiteSpace(submittedBy)) return Results.Unauthorized();
-        await using var stream = image.OpenReadStream();
-        using var memory = new MemoryStream();
-        await stream.CopyToAsync(memory, ct);
+        var imageData = Array.Empty<byte>();
+        if (image is not null) { await using var stream = image.OpenReadStream(); using var memory = new MemoryStream(); await stream.CopyToAsync(memory, ct); imageData = memory.ToArray(); }
         var geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(longitude, latitude));
-        var finding = new Finding { InvestigationId = investigationId, SubmittedBy = submittedBy.Trim(), Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(), ObservedAt = observedAt ?? DateTimeOffset.UtcNow, ImageContentType = image.ContentType.ToLowerInvariant(), ImageFileName = Path.GetFileName(image.FileName), ImageData = memory.ToArray(), Geometry = geometry };
+        var finding = new Finding { InvestigationId = investigationId, SubmittedBy = submittedBy.Trim(), Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(), ObservedAt = observedAt ?? DateTimeOffset.UtcNow, ImageContentType = image?.ContentType.ToLowerInvariant() ?? "application/octet-stream", ImageFileName = image is null ? "" : Path.GetFileName(image.FileName), ImageData = imageData, Geometry = geometry };
         db.Findings.Add(finding);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/investigations/{investigationId}/findings/{finding.Id}", ToSummary(finding, investigationId));
+    }
+
+    private static async Task<IResult> UpdateAsync(Guid investigationId, Guid findingId, IFormFile? image, [FromForm] double? longitude, [FromForm] double? latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, EfpDbContext db, HttpContext http, CancellationToken ct)
+    {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
+        var finding = await db.Findings.FirstOrDefaultAsync(x => x.Id == findingId && x.InvestigationId == investigationId, ct);
+        if (finding is null) return Results.NotFound();
+        if (longitude.HasValue != latitude.HasValue || longitude is < -180 or > 180 || latitude is < -90 or > 90) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = ["Positionen är ogiltig."] });
+        if (image is not null && (image.Length == 0 || image.Length > MaxImageBytes)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara mellan 1 byte och 10 MB."] });
+        if (image is not null && !ImageTypes.Contains(image.ContentType.ToLowerInvariant())) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara JPEG, PNG eller WebP."] });
+        if (longitude.HasValue) finding.Geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(longitude.Value, latitude!.Value));
+        if (observedAt.HasValue) finding.ObservedAt = observedAt.Value;
+        finding.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (image is not null) { await using var stream = image.OpenReadStream(); using var memory = new MemoryStream(); await stream.CopyToAsync(memory, ct); finding.ImageData = memory.ToArray(); finding.ImageContentType = image.ContentType.ToLowerInvariant(); finding.ImageFileName = Path.GetFileName(image.FileName); }
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToSummary(finding, investigationId));
     }
 
     private static async Task<IResult> ListAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
@@ -60,7 +78,7 @@ public static class FindingEndpoints
     {
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var finding = await db.Findings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == findingId && x.InvestigationId == investigationId, ct);
-        return finding is null ? Results.NotFound() : Results.File(finding.ImageData, finding.ImageContentType, finding.ImageFileName);
+        return finding is null ? Results.NotFound() : finding.ImageData.Length == 0 ? Results.NotFound("Fyndet saknar bild.") : Results.File(finding.ImageData, finding.ImageContentType, finding.ImageFileName);
     }
 
     private static async Task<IResult> ExportGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? findingIds, [FromQuery] Guid[]? sectorIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
@@ -102,5 +120,5 @@ public static class FindingEndpoints
         return await query.OrderByDescending(x => x.ObservedAt).ToListAsync(ct);
     }
 
-    private static object ToSummary(Finding finding, Guid investigationId) => new { finding.Id, finding.SubmittedBy, finding.Description, finding.ObservedAt, finding.SubmittedAt, ImageUrl = $"/api/v1/investigations/{investigationId}/findings/{finding.Id}/image", Longitude = finding.Geometry.X, Latitude = finding.Geometry.Y };
+    private static object ToSummary(Finding finding, Guid investigationId) => new { finding.Id, finding.SubmittedBy, finding.Description, finding.ObservedAt, finding.SubmittedAt, HasImage = finding.ImageData.Length > 0, ImageUrl = finding.ImageData.Length > 0 ? $"/api/v1/investigations/{investigationId}/findings/{finding.Id}/image" : null, Longitude = finding.Geometry.X, Latitude = finding.Geometry.Y };
 }

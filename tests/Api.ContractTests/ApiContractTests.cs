@@ -35,6 +35,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/sectors", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/tracks/import", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings/{findingId}", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings.geojson", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/admin/login", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/user/connect", out _));
