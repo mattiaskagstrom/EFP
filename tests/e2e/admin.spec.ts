@@ -28,6 +28,21 @@ test('@smoke user role does not offer investigation creation', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Skapa sökinsats' })).toHaveCount(0);
 });
 
+test('@smoke mobile start page hides the administrator choice', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: /Administratör/ })).toBeHidden();
+  await expect(page.getByRole('button', { name: /Användare/ })).toBeVisible();
+});
+
+test('@critical investigation picker has a scrollable page', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Administratör/ }).click();
+  const selectionScreen = page.locator('.selection-screen');
+  await expect(selectionScreen).toHaveCSS('overflow-y', 'auto');
+  await expect(selectionScreen).toHaveCSS('height', '100%');
+});
+
 test('@critical user investigation view has a scrollable page', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Administratör/ }).click();
