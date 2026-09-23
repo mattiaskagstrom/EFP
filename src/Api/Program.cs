@@ -31,6 +31,9 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "EndsAt" timestamp with time zone NULL;
         ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "Poa" double precision NULL;
         ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "Pod" double precision NULL;
+        ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "AssignedGroup" text NULL;
+        ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "SectorId" uuid NULL;
+        ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "Notes" text NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;
         CREATE TABLE IF NOT EXISTS "InvestigationMaps" (
             "Id" uuid NOT NULL PRIMARY KEY,

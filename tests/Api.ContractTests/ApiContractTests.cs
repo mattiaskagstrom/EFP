@@ -99,7 +99,9 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Contains(sectorId.ToString(), await selectedExport.Content.ReadAsStringAsync());
 
         var invalid = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", new { payload.name, payload.status, payload.searchMethod, payload.priority, geometry = new { coordinates = new[] { new[] { 18.0, 59.0 }, new[] { 18.01, 59.0 } } } });
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, invalid.StatusCode);
+        var lineSector = await invalid.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("LineString", lineSector.GetProperty("geometry").GetProperty("type").GetString());
 
         var invalidExportPeriod = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.geojson?from=2026-09-22T16:00:00Z&to=2026-09-22T08:00:00Z");
         Assert.Equal(HttpStatusCode.BadRequest, invalidExportPeriod.StatusCode);
@@ -148,6 +150,30 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var sector = Assert.Single(sectors.EnumerateArray());
         Assert.Equal("LineString", sector.GetProperty("geometry").GetProperty("type").GetString());
         Assert.Contains("linjeunderlag", sector.GetProperty("instructions").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Track_import_accepts_metadata_and_lists_uploaded_track()
+    {
+        var investigation = await CreateInvestigation();
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent("<gpx><trk><trkseg><trkpt lat=\"59\" lon=\"18\"/><trkpt lat=\"59.01\" lon=\"18.01\"/></trkseg></trk></gpx>", Encoding.UTF8, "application/gpx+xml"), "file", "alfa.gpx");
+        content.Add(new StringContent("Alfa 1"), "callsign");
+        content.Add(new StringContent("75"), "pod");
+        content.Add(new StringContent("Patrull Alfa"), "assignedGroup");
+        content.Add(new StringContent("POD noterad vid avslut."), "notes");
+
+        var import = await client.PostAsync($"/api/v1/investigations/{investigation}/tracks/import", content);
+        Assert.Equal(HttpStatusCode.Created, import.StatusCode);
+        var created = await import.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Alfa 1", created.GetProperty("callsign").GetString());
+        Assert.Equal("Patrull Alfa", created.GetProperty("assignedGroup").GetString());
+        Assert.Equal(75, created.GetProperty("pod").GetDouble());
+
+        var history = await client.GetFromJsonAsync<JsonElement>($"/api/v1/investigations/{investigation}/tracks?callsign=Alfa%201");
+        var track = Assert.Single(history.EnumerateArray());
+        Assert.Equal("alfa.gpx", track.GetProperty("sourceFile").GetString());
+        Assert.Equal("POD noterad vid avslut.", track.GetProperty("notes").GetString());
     }
 
     [Fact]

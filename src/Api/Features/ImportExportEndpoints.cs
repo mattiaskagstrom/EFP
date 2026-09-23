@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Xml;
 using System.Xml.Linq;
 using Efp.Api.Data;
 using Efp.Api.Domain;
@@ -27,6 +28,7 @@ public static class ImportExportEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
         group.MapPost("/tracks/import", ImportGpxAsync).DisableAntiforgery();
+        group.MapGet("/tracks", ListTracksAsync);
         group.MapPatch("/tracks/{trackId:guid}", UpdateTrackMetadataAsync);
         group.MapPost("/sectors/import", ImportSectorsGpxAsync).DisableAntiforgery();
         group.MapGet("/sectors.geojson", ExportSectorsGeoJsonAsync);
@@ -38,18 +40,32 @@ public static class ImportExportEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ImportGpxAsync(Guid investigationId, IFormFile file, string? callsign, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ImportGpxAsync(Guid investigationId, IFormFile file, [FromForm] string? callsign, [FromForm] double? pod, [FromForm] string? assignedGroup, [FromForm] Guid? sectorId, [FromForm] string? notes, EfpDbContext db, CancellationToken ct)
     {
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length == 0 || file.Length > 25 * 1024 * 1024) return Results.BadRequest("GPX file must be between 1 byte and 25 MB.");
+        if (pod is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["pod"] = ["POD måste vara mellan 0 och 100."] });
+        if (sectorId.HasValue && !await db.Sectors.AnyAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["sectorId"] = ["Vald sektor finns inte i sökinsatsen."] });
         await using var stream = file.OpenReadStream();
-        var document = await XDocument.LoadAsync(stream, LoadOptions.None, ct);
-        var points = document.Descendants().Where(x => x.Name.LocalName == "trkpt").Select(x => new Coordinate(Parse(x.Attribute("lon")?.Value), Parse(x.Attribute("lat")?.Value))).ToArray();
+        XDocument document;
+        try { document = await XDocument.LoadAsync(stream, LoadOptions.None, ct); }
+        catch (Exception exception) when (exception is XmlException or FormatException) { return Results.BadRequest("GPX-filen innehåller ogiltig XML."); }
+        Coordinate[] points;
+        try { points = document.Descendants().Where(x => x.Name.LocalName == "trkpt").Select(x => new Coordinate(Parse(x.Attribute("lon")?.Value), Parse(x.Attribute("lat")?.Value))).ToArray(); }
+        catch (FormatException) { return Results.BadRequest("GPX-filen innehåller ogiltiga koordinater."); }
         if (points.Length < 2) return Results.BadRequest("GPX must contain at least two track points.");
         var geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreateLineString(points);
-        var track = new Track { InvestigationId = investigationId, Callsign = string.IsNullOrWhiteSpace(callsign) ? "GPX import" : callsign.Trim(), SourceFile = file.FileName, Geometry = geometry };
+        var track = new Track { InvestigationId = investigationId, Callsign = string.IsNullOrWhiteSpace(callsign) ? "GPX import" : callsign.Trim(), SourceFile = file.FileName, AssignedGroup = assignedGroup?.Trim(), SectorId = sectorId, Notes = notes?.Trim(), Pod = pod, Geometry = geometry };
         db.Tracks.Add(track); await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/v1/investigations/{investigationId}/tracks/{track.Id}", new { track.Id, track.Callsign, track.SourceFile, PointCount = points.Length });
+        return Results.Created($"/api/v1/investigations/{investigationId}/tracks/{track.Id}", new { track.Id, track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.Pod, PointCount = points.Length });
+    }
+
+    private static async Task<IResult> ListTracksAsync(Guid investigationId, [FromQuery] string? callsign, EfpDbContext db, CancellationToken ct)
+    {
+        var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
+        if (!string.IsNullOrWhiteSpace(callsign)) query = query.Where(x => x.Callsign == callsign.Trim());
+        var tracks = await query.OrderByDescending(x => x.ImportedAt).Select(x => new { x.Id, x.Callsign, x.SourceFile, x.AssignedGroup, x.SectorId, x.Notes, x.Pod, x.StartedAt, x.EndedAt, x.ImportedAt, PointCount = x.Geometry.NumPoints }).ToListAsync(ct);
+        return Results.Ok(tracks);
     }
 
     private static async Task<IResult> UpdateTrackMetadataAsync(Guid investigationId, Guid trackId, TrackMetadataRequest request, EfpDbContext db, CancellationToken ct)
@@ -59,7 +75,7 @@ public static class ImportExportEndpoints
         if (track is null) return Results.NotFound();
         track.Pod = request.Pod;
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { track.Id, track.Callsign, track.SourceFile, track.Pod });
+        return Results.Ok(new { track.Id, track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.Pod });
     }
 
     private static async Task<IResult> ImportSectorsGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, CancellationToken ct)
@@ -100,7 +116,7 @@ public static class ImportExportEndpoints
                 if (line.NumPoints >= 2 && line.IsValid)
                 {
                     var name = string.IsNullOrWhiteSpace(segmentName) ? $"GPX-linje {existingCount + created.Count + 1}" : segmentName.Trim();
-                    var sector = new Sector { InvestigationId = investigationId, Name = name, Status = SectorStatus.NotStarted, SearchMethod = SearchMethod.Patrol, Priority = existingCount + created.Count + 1, Instructions = $"Importerad linje från {file.FileName}. Ingen säker sluten polygon kunde skapas.", Geometry = line };
+                    var sector = new Sector { InvestigationId = investigationId, Name = name, Status = SectorStatus.NotStarted, SearchMethod = SearchMethod.Patrol, Priority = existingCount + created.Count + 1, Instructions = $"Importerad linjeunderlag från {file.FileName}. Ingen säker sluten polygon kunde skapas.", Geometry = line };
                     created.Add(sector);
                     imported.Add(new { sector.Name, PointCount = line.NumPoints, GeometryType = "LineString", Warning = "Importerad som linjeunderlag" });
                 }
@@ -268,7 +284,7 @@ public static class ImportExportEndpoints
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
         var tracks = await query.ToListAsync(ct);
-        var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.StartedAt, track.EndedAt, track.Pod }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
+        var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.StartedAt, track.EndedAt, track.Pod }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 

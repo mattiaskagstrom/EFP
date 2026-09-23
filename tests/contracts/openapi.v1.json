@@ -10,6 +10,8 @@
     "/api/v1/investigations/{investigationId}/maps/{mapId}/image": ["get"],
     "/api/v1/investigations/{investigationId}/maps/{mapId}": ["delete"],
     "/api/v1/investigations/{investigationId}/tracks/import": ["post"],
+    "/api/v1/investigations/{investigationId}/tracks": ["get"],
+    "/api/v1/investigations/{investigationId}/tracks/{trackId}": ["patch"],
     "/api/v1/investigations/{investigationId}/sectors/import": ["post"],
     "/api/v1/investigations/{investigationId}/sectors.geojson": ["get"],
     "/api/v1/investigations/{investigationId}/sectors.gpx": ["get"],

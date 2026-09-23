@@ -202,12 +202,12 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 ### Uppladdning av externa spår
 
 - [x] Välja en eller flera spårfiler från en extern GPS-app eller GPS-enhet.
-- [ ] Ange metadata för uppladdningen, exempelvis POD, patrull/grupp, anropsnamn, sektor och anteckning.
-- [ ] Validera spårfiler innan uppladdning.
+- [x] Ange metadata för uppladdningen, exempelvis POD, patrull/grupp, anropsnamn, sektor och anteckning.
+- [x] Validera spårfiler innan uppladdning.
 - [x] Visa tydlig status för lyckade och misslyckade uppladdningar.
-- [ ] Kunna försöka ladda upp en misslyckad fil igen.
-- [ ] Visa historik över egna uppladdningar.
-- [ ] Behålla originalspårets geometri efter uppladdning.
+- [x] Kunna försöka ladda upp en misslyckad fil igen.
+- [x] Visa historik över egna uppladdningar.
+- [x] Behålla originalspårets geometri efter uppladdning.
 
 ### Avgränsning i första versionen
 

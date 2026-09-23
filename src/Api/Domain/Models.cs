@@ -69,6 +69,9 @@ public sealed class Track
     public Investigation? Investigation { get; set; }
     public required string Callsign { get; set; }
     public string? SourceFile { get; set; }
+    public string? AssignedGroup { get; set; }
+    public Guid? SectorId { get; set; }
+    public string? Notes { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? EndedAt { get; set; }
     public double? Pod { get; set; }

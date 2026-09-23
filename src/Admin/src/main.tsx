@@ -16,6 +16,7 @@ import { InvestigationEditButton } from './InvestigationEditButton';
 import { exportFormats, type ExportFormat, type ExportSelection } from './exportFormats';
 import { investigationPath, navigateTo, parseRoute, type AppRole, type AppRoute } from './routing';
 import { TrackList, type Track } from './TrackList';
+import { validateTrackFile } from './trackUpload';
 
 type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
@@ -447,13 +448,13 @@ function App() {
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
           {sectorsExpanded && <><input className="sector-search" type="search" value={sectorSearch} onChange={event => setSectorSearch(event.target.value)} placeholder="Sök sektor-namn" aria-label="Sök sektor-namn" />
             {sectors.length > 0 && <div className="sector-bulk-actions"><button type="button" disabled={visibleSectorIds.length === 0} onClick={toggleAllVisibleSectors}>{allVisibleSectorsChecked ? 'Välj inga' : 'Välj alla'}</button><button type="button" className="danger-button" disabled={selectedSectorCount === 0} onClick={() => void deleteSelectedSectors()}>Radera valda ({selectedSectorCount})</button></div>}
-            {sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : matchingSectors.length === 0 ? <p className="muted">Inga sektorer matchar sökningen.</p> : matchingSectors.map(sector => {
+            <div className="sector-list">{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : matchingSectors.length === 0 ? <p className="muted">Inga sektorer matchar sökningen.</p> : matchingSectors.map(sector => {
               const draft = sectorDrafts[sector.id] ?? { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null };
               const expanded = expandedSectorId === sector.id; const hidden = hiddenSectorIds[sector.id] === true;
               const invalid = invalidSectorIdSet.has(sector.id) || isInvalidSector(sector);
               return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''} ${invalid ? 'invalid' : ''}`} key={sector.id}><label className="sector-select-checkbox" title="Markera sektor"><input type="checkbox" checked={checkedSectorIds.includes(sector.id)} onChange={event => setCheckedSectorIds(current => event.target.checked ? [...current, sector.id] : current.filter(id => id !== sector.id))} /> <span className="sr-only">Markera {draft.name || 'sektor'}</span></label><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{invalid ? 'Ogiltig geometri' : hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
                 {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
-            })}</>}
+            })}</div></>}
         </section>
         <section className="sidebar-section tracks-section"><button type="button" className="tracks-section-toggle" aria-expanded={tracksExpanded} onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && <TrackList tracks={tracks} visibleTracks={visibleTracks} onVisibleChange={(trackId, visible) => setVisibleTracks(current => ({ ...current, [trackId]: visible }))} selectedTrackId={selectedTrackId} expandedTrackId={expandedTrackId} onSelect={setSelectedTrackId} onToggleExpanded={trackId => setExpandedTrackId(current => current === trackId ? null : trackId)} onUpdatePod={(track, value) => { void updateTrackPod(track, value); }} />}</section>
         <details className="sidebar-section own-maps-section"><summary>Egna kartor</summary><div className="own-map-upload"><label>Västlig longitud<input type="number" step="any" value={mapBounds.west} onChange={event => setMapBounds(current => ({ ...current, west: event.target.value }))} /></label><label>Sydlig latitud<input type="number" step="any" value={mapBounds.south} onChange={event => setMapBounds(current => ({ ...current, south: event.target.value }))} /></label><label>Östlig longitud<input type="number" step="any" value={mapBounds.east} onChange={event => setMapBounds(current => ({ ...current, east: event.target.value }))} /></label><label>Nordlig latitud<input type="number" step="any" value={mapBounds.north} onChange={event => setMapBounds(current => ({ ...current, north: event.target.value }))} /></label><input id="own-map-upload" className="file-input" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={event => void uploadOwnMap(event)} /><label className="file-button" htmlFor="own-map-upload">Ladda upp kartbild</label></div>{ownMaps.length === 0 ? <p className="muted">Inga egna kartor uppladdade.</p> : <div className="own-map-list">{ownMaps.map(map => <div className="own-map-item" key={map.id}><label><input type="checkbox" checked={visibleOwnMaps[map.id] ?? true} onChange={event => setVisibleOwnMaps(current => ({ ...current, [map.id]: event.target.checked }))} /> {map.name}</label><button type="button" className="danger-button" onClick={() => void deleteOwnMap(map)}>Radera</button></div>)}</div>}</details>
@@ -495,33 +496,58 @@ function RouteNotFound({ onHome }: { onHome: () => void }) {
   return <main className="selection-screen"><section className="investigation-picker"><h2>Sidan kunde inte hittas</h2><p>Kontrollera länken eller välj ett gränssnitt igen.</p><button onClick={onHome}>Till startsidan</button></section></main>;
 }
 
+type UploadItem = { id: string; file: File; status: 'queued' | 'uploading' | 'success' | 'error'; message?: string; trackId?: string };
+type UploadedTrack = { id: string; sourceFile?: string; callsign: string; assignedGroup?: string; sectorId?: string; notes?: string; pod?: number | null; importedAt?: string; pointCount?: number };
+
 function UserInvestigationView({ investigation, onBack }: { investigation: Investigation; onBack: () => void }) {
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
   const [callsign, setCallsign] = useState('');
+  const [pod, setPod] = useState('');
+  const [assignedGroup, setAssignedGroup] = useState('');
+  const [sectorId, setSectorId] = useState('');
+  const [notes, setNotes] = useState('');
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [uploadHistory, setUploadHistory] = useState<UploadedTrack[]>([]);
   const [uploading, setUploading] = useState(false);
   useEffect(() => {
     let cancelled = false;
     void fetch(`${API}/investigations/${investigation.id}/sectors`).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
     return () => { cancelled = true; };
   }, [investigation.id]);
-  const uploadTracks = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = '';
-    if (files.length === 0) return;
-    if (!callsign.trim()) { setUploadMessage('Anropsnamn måste anges innan spår laddas upp.'); return; }
-    setUploading(true); setUploadMessage('Laddar upp…');
+  useEffect(() => {
+    if (!callsign.trim()) { setUploadHistory([]); return; }
+    let cancelled = false;
+    void fetch(`${API}/investigations/${investigation.id}/tracks?callsign=${encodeURIComponent(callsign.trim())}`)
+      .then(response => response.ok ? response.json() : [])
+      .then(data => { if (!cancelled) setUploadHistory(data); })
+      .catch(() => { if (!cancelled) setUploadHistory([]); });
+    return () => { cancelled = true; };
+  }, [investigation.id, callsign]);
+  const updateUploadItem = (id: string, patch: Partial<UploadItem>) => setUploadItems(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
+  const uploadOne = async (item: UploadItem) => {
+    if (!callsign.trim()) { updateUploadItem(item.id, { status: 'error', message: 'Anropsnamn måste anges.' }); return; }
+    updateUploadItem(item.id, { status: 'uploading', message: undefined }); setUploading(true);
     try {
-      for (const file of files) {
-        const form = new FormData(); form.append('file', file); form.append('callsign', callsign.trim());
-        const response = await fetch(`${API}/investigations/${investigation.id}/tracks/import?callsign=${encodeURIComponent(callsign.trim())}`, { method: 'POST', body: form });
-        if (!response.ok) throw new Error(`${file.name}: ${(await response.text()) || `HTTP ${response.status}`}`);
-      }
-      setUploadMessage(`${files.length} spår uppladdade.`);
+      const form = new FormData(); form.append('file', item.file); form.append('callsign', callsign.trim());
+      if (pod) form.append('pod', pod); if (assignedGroup.trim()) form.append('assignedGroup', assignedGroup.trim()); if (sectorId) form.append('sectorId', sectorId); if (notes.trim()) form.append('notes', notes.trim());
+      const response = await fetch(`${API}/investigations/${investigation.id}/tracks/import`, { method: 'POST', body: form });
+      if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+      const result = await response.json();
+      updateUploadItem(item.id, { status: 'success', trackId: result.id, message: 'Uppladdad.' });
+      setUploadHistory(current => [result, ...current.filter(track => track.id !== result.id)]);
     } catch (cause) {
-      setUploadMessage(cause instanceof Error ? cause.message : 'Spåren kunde inte laddas upp.');
+      updateUploadItem(item.id, { status: 'error', message: cause instanceof Error ? cause.message : 'Uppladdningen misslyckades.' });
     } finally { setUploading(false); }
+  };
+  const uploadTracks = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length === 0) return;
+    if (!callsign.trim()) { setUploadMessage('Anropsnamn måste anges innan spår laddas upp.'); return; }
+    const items: UploadItem[] = [];
+    for (const file of files) { const validation = await validateTrackFile(file); items.push({ id: `${file.name}-${file.lastModified}-${Math.random()}`, file, status: validation.valid ? 'queued' : 'error', message: validation.valid ? undefined : validation.message }); }
+    setUploadItems(items); setUploadMessage('');
+    for (const item of items.filter(candidate => candidate.status === 'queued')) await uploadOne(item);
   };
   const allSectorIds = sectors.map(sector => sector.id);
   const allSectorsSelected = allSectorIds.length > 0 && selectedSectorIds.length === allSectorIds.length;
@@ -535,7 +561,8 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
       <h2>{investigation.name}</h2>
       <p className="muted">{investigation.description || 'Planerade och aktiva sektorer för extern GPS-användning.'}</p>
       <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={format.label} href={selectedSectorIds.length === 0 ? undefined : format.sectors(API, investigation.id, exportSelection)} onClick={event => { if (selectedSectorIds.length === 0) event.preventDefault(); }}>{format.label}</a>)}</div>{sectors.length > 0 && <p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p>}</section>
-      <section className="user-section"><h3>Ladda upp spår från extern GPS</h3><label>Anropsnamn<input value={callsign} onChange={event => setCallsign(event.target.value)} placeholder="Exempel: Alfa 1" /></label><input id="user-track-upload" className="file-input" type="file" accept=".gpx,application/gpx+xml" multiple onChange={event => void uploadTracks(event)} /><label className="file-button" htmlFor="user-track-upload">{uploading ? 'Laddar upp…' : 'Välj spårfiler'}</label>{uploadMessage && <p className="upload-message">{uploadMessage}</p>}</section>
+      <section className="user-section"><h3>Ladda upp spår från extern GPS</h3><label>Anropsnamn<input value={callsign} onChange={event => setCallsign(event.target.value)} placeholder="Exempel: Alfa 1" required /></label><label>POD (%)<input type="number" min="0" max="100" step="0.1" value={pod} onChange={event => setPod(event.target.value)} placeholder="Inte angivet" /></label><label>Patrull/grupp<input value={assignedGroup} onChange={event => setAssignedGroup(event.target.value)} placeholder="Exempel: Alfa 1" /></label><label>Sektor<select value={sectorId} onChange={event => setSectorId(event.target.value)}><option value="">Ingen sektor vald</option>{sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></label><label>Anteckning<textarea value={notes} onChange={event => setNotes(event.target.value)} rows={3} /></label><input id="user-track-upload" className="file-input" type="file" accept=".gpx,application/gpx+xml" multiple onChange={event => void uploadTracks(event)} /><label className="file-button" htmlFor="user-track-upload">{uploading ? 'Laddar upp…' : 'Välj spårfiler'}</label>{uploadMessage && <p className="upload-message">{uploadMessage}</p>}{uploadItems.length > 0 && <ul className="upload-status-list">{uploadItems.map(item => <li key={item.id}><span>{item.file.name}</span><small className={`upload-status-${item.status}`}>{item.message || (item.status === 'uploading' ? 'Laddar upp…' : 'Väntar…')}</small>{item.status === 'error' && <button type="button" onClick={() => void uploadOne(item)}>Försök igen</button>}</li>)}</ul>}</section>
+      <section className="user-section"><h3>Mina uppladdningar</h3>{uploadHistory.length === 0 ? <p className="muted">Inga uppladdningar hittades för anropsnamnet.</p> : <ul className="upload-history-list">{uploadHistory.map(track => <li key={track.id}><strong>{track.sourceFile || 'GPX-spår'}</strong><span>{track.assignedGroup || 'Ingen grupp'} · {track.pod === null || track.pod === undefined ? 'POD ej angiven' : `POD ${track.pod}%`}</span>{track.notes && <small>{track.notes}</small>}</li>)}</ul>}</section>
       <p className="muted user-scope-note">Användarläget visar endast planerade och aktiva insatser. QR-/kodanslutning införs i nästa steg.</p>
     </section>
   </main>;
