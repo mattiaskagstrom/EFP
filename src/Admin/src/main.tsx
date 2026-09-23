@@ -958,33 +958,11 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const [mapFindings, setMapFindings] = useState<Finding[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   useMapEvents({ click: event => { if (findingMode) { window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { latitude: event.latlng.lat, longitude: event.latlng.lng } })); setFindingMode(false); onToolChange('none'); } } });
-  useEffect(() => {
-    const activateFinding = () => {
-      drawingMode.current = false;
-      textRemovalMode.current = false;
-      editSelectionMode.current = false;
-      splitSelectionMode.current = false;
-      mergeSelectionMode.current = false;
-      setTextMode(false);
-      setReferencePointMode(null);
-      setFindingMode(true);
-    };
-    window.addEventListener('efp:activate-finding', activateFinding);
-    return () => window.removeEventListener('efp:activate-finding', activateFinding);
-  }, []);
   const settings = useRef({ color, strokeStyle });
   const nextSectorNameRef = useRef(nextSectorName);
   settings.current = { color, strokeStyle };
   nextSectorNameRef.current = nextSectorName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
-  useEffect(() => {
-    if (!toolbarTarget) return;
-    const button = document.createElement('button');
-    button.type = 'button'; button.textContent = '📍 Fynd'; button.setAttribute('aria-label', 'Placera fynd på kartan');
-    button.onclick = () => { onToolChange('Finding'); window.dispatchEvent(new Event('efp:activate-finding')); };
-    toolbarTarget.appendChild(button);
-    return () => button.remove();
-  }, [toolbarTarget, onToolChange]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
   useEffect(() => {
@@ -1411,7 +1389,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     );
     return () => { active = false; };
   }, [map, sectors.length]);
-  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en sektor och rita sedan en fri linje från kant till kant" aria-label="Dela sektor: välj en sektor och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela sektor</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två sektorer som delar en gemensam kant" aria-label="Slå ihop sektorer: välj två angränsande sektorer" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop sektorer</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
+  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en sektor och rita sedan en fri linje från kant till kant" aria-label="Dela sektor: välj en sektor och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela sektor</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två sektorer som delar en gemensam kant" aria-label="Slå ihop sektorer: välj två angränsande sektorer" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop sektorer</button><button className={activeTool === 'Finding' ? 'active' : ''} aria-label="Placera fynd på kartan" onClick={() => { onToolChange('Finding'); api.placeFinding(); }}>📍 Fynd</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
 }
 
 function TextPlacement({ enabled, onPlace }: { enabled: boolean; onPlace: (lat: number, lng: number) => void }) { useMapEvents({ click: event => { if (enabled) onPlace(event.latlng.lat, event.latlng.lng); } }); return null; }
