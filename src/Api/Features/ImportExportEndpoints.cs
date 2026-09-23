@@ -285,24 +285,26 @@ public static class ImportExportEndpoints
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery] Guid[]? sectorIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
         var tracks = await query.ToListAsync(ct);
+        tracks = await FilterTracksBySectorsAsync(investigationId, tracks, sectorIds, db, ct);
         var features = tracks.Select(track => new { type = "Feature", id = track.Id, properties = new { track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.StartedAt, track.EndedAt, track.Pod }, geometry = new { type = "LineString", coordinates = track.Geometry.Coordinates.Select(c => new[] { c.X, c.Y }).ToArray() } });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery] Guid[]? sectorIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
         var tracks = await query.ToListAsync(ct);
+        tracks = await FilterTracksBySectorsAsync(investigationId, tracks, sectorIds, db, ct);
         var root = new XElement(XName.Get("gpx", "http://www.topografix.com/GPX/1/1"), new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
         foreach (var track in tracks)
         {
@@ -310,6 +312,17 @@ public static class ImportExportEndpoints
             root.Add(trk);
         }
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
+    }
+
+    private static async Task<List<Track>> FilterTracksBySectorsAsync(Guid investigationId, List<Track> tracks, Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
+    {
+        if (sectorIds is not { Length: > 0 }) return tracks;
+        var sectorGeometries = await db.Sectors.AsNoTracking()
+            .Where(x => x.InvestigationId == investigationId && sectorIds.Contains(x.Id))
+            .Select(x => x.Geometry)
+            .ToListAsync(ct);
+        if (sectorGeometries.Count == 0) return [];
+        return tracks.Where(track => sectorGeometries.Any(sector => track.Geometry.Intersects(sector))).ToList();
     }
 
     private static IQueryable<Track> ApplyTrackFilter(IQueryable<Track> query, Guid[]? trackIds, DateTimeOffset? fromDate, DateTimeOffset? toDate)

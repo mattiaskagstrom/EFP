@@ -228,9 +228,9 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 - [x] Ladda ner valda sektorer från sökinsatsen.
 - [x] Välja bland samma exportformat som admin-gränssnittet stödjer.
 - [x] Se sektorernas namn och status.
-- [ ] Välja sektorer för att hämta spår från sökinsatsen.
-- [ ] Hämta alla spår som intersectar med valda sektorer, inklusive hela spåret även när det sträcker sig utanför sektorerna.
-- [ ] Välja exportformat för de hämtade spåren.
+- [x] Välja sektorer för att hämta spår från sökinsatsen.
+- [x] Hämta alla spår som intersectar med valda sektorer, inklusive hela spåret även när det sträcker sig utanför sektorerna.
+- [x] Välja exportformat för de hämtade spåren.
 - [ ] Välja sektorer för att hämta fynd från sökinsatsen på samma sätt som spår.
 - [ ] Välja exportformat eller visningsformat för hämtade fynd.
 

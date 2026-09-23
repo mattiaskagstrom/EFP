@@ -251,6 +251,20 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var track = Assert.Single(history.EnumerateArray());
         Assert.Equal("alfa.gpx", track.GetProperty("sourceFile").GetString());
         Assert.Equal("POD noterad vid avslut.", track.GetProperty("notes").GetString());
+
+        var sectorCreate = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", new
+        {
+            name = "Norra sektorn",
+            status = "NotStarted",
+            searchMethod = "Patrol",
+            priority = 1,
+            geometry = new { type = "Polygon", coordinates = new[] { new[] { 17.999, 58.999 }, new[] { 18.002, 58.999 }, new[] { 17.999, 59.002 } } },
+        });
+        sectorCreate.EnsureSuccessStatusCode();
+        var sectorId = (await sectorCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var selectedTracks = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.geojson?sectorIds={sectorId}");
+        Assert.Equal(HttpStatusCode.OK, selectedTracks.StatusCode);
+        Assert.Contains(track.GetProperty("id").GetGuid().ToString(), await selectedTracks.Content.ReadAsStringAsync());
     }
 
     [Fact]
