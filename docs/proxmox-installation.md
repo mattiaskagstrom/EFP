@@ -41,10 +41,10 @@ Exempel:
 EFP_DB_PASSWORD=<databaslösenordet som installationsskriptet skapade>
 ASPNETCORE_ENVIRONMENT=Production
 Superadmin__Username=superadmin
-Superadmin__Password=<minst 10 tecken>
+Superadmin__Password=<minst 10 tecken, med versal och siffra>
 ```
 
-Lösenordet måste vara minst 10 tecken. Använd gärna ett slumpmässigt lösenord med minst 20 tecken och undvik radbrytningar; värden med specialtecken kan omges av dubbla citationstecken i `.env`.
+Lösenordet måste vara minst 10 tecken och innehålla minst en versal och en siffra. Använd gärna ett slumpmässigt lösenord med minst 20 tecken och undvik radbrytningar; värden med specialtecken kan omges av dubbla citationstecken i `.env`.
 
 Starta om API-containern så att konfigurationen läses in:
 

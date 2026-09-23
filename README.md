@@ -77,10 +77,10 @@ Om npm-registret använder ett företagscertifikat aktiverar skriptet automatisk
 
 ```powershell
 $env:Superadmin__Username = 'superadmin'
-$env:Superadmin__Password = 'byt-det-har-losenordet'
+$env:Superadmin__Password = 'BytDettaLokalt9'
 .\scripts\dev.ps1
 ```
 
-Lösenordet måste vara minst 10 tecken. Vid första uppstarten skapar API:et rollen `Superadmin` och kontot om det saknas. Öppna sedan [http://localhost:5173](http://localhost:5173), välj administratörsläget och logga in med värdena ovan. Variablerna gäller bara den aktuella PowerShell-sessionen och ska inte läggas in i repositoryt.
+Lösenordet måste vara minst 10 tecken och innehålla minst en siffra och en versal. Vid första uppstarten skapar API:et rollen `Superadmin` och kontot om det saknas. Öppna sedan [http://localhost:5173](http://localhost:5173), välj administratörsläget och logga in med värdena ovan. Variablerna gäller bara den aktuella PowerShell-sessionen och ska inte läggas in i repositoryt.
 
 Om kontot redan finns ändras inte lösenordet vid varje omstart. För en ny lokal databas kan du radera den lokala utvecklingsvolymen och starta om, eller skapa ett nytt konto via adminregistreringen. Se även [Bootstrap av Superadmin](docs/drift-bootstrap-superadmin.md) för driftmiljöer.
