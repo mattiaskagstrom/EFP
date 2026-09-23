@@ -104,6 +104,13 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Ändra sökmetod, prioritet, instruktion och tilldelad patrull/grupp i sektorns inställningar.
 - [ ] Visa sökt och återstående yta för insatsen.
 
+### Fynd
+
+- [ ] Visa en hopfällbar fyndsektion i adminläget.
+- [ ] Visa fyndets bild, position, tidpunkt och vem som skickade in det.
+- [ ] Visa fynd på karta och i en lista kopplad till den valda sökinsatsen.
+- [ ] Hämta fynd genom att välja sektorer på samma sätt som vid hämtning av spår i användarläget.
+
 ### Import och export
 
 - [x] Importera flera spår från GPX.
@@ -175,6 +182,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Ange tidpunkt, prioritet och status.
 - [ ] Koppla anropsnamn och sökinsats till punkten.
 - [ ] Bifoga fotografi till en punkt.
+- [ ] Skicka in ett fynd från användarläget med bild, position, tidpunkt och insändarens anropsnamn.
+- [ ] Visa tydlig status när ett fynd skickas in eller när uppladdningen misslyckas.
 - [ ] Importera och exportera punkter i GPX-format.
 
 ### Synkronisering och gemensam lägesbild
@@ -219,6 +228,11 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 - [x] Ladda ner valda sektorer från sökinsatsen.
 - [x] Välja bland samma exportformat som admin-gränssnittet stödjer.
 - [x] Se sektorernas namn och status.
+- [ ] Välja sektorer för att hämta spår från sökinsatsen.
+- [ ] Hämta alla spår som intersectar med valda sektorer, inklusive hela spåret även när det sträcker sig utanför sektorerna.
+- [ ] Välja exportformat för de hämtade spåren.
+- [ ] Välja sektorer för att hämta fynd från sökinsatsen på samma sätt som spår.
+- [ ] Välja exportformat eller visningsformat för hämtade fynd.
 
 ### Uppladdning av externa spår
 
