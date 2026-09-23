@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
-    "test": "vitest run --config ./vite.config.ts",
-    "test:watch": "vitest --config ./vite.config.ts",
-    "test:coverage": "vitest run --config ./vite.config.ts --coverage",
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build --configLoader runner",
+    "test": "vitest run --config ./vite.config.ts --configLoader runner",
+    "test:watch": "vitest --config ./vite.config.ts --configLoader runner",
+    "test:coverage": "vitest run --config ./vite.config.ts --configLoader runner --coverage",
     "preview": "vite preview"
   },
   "dependencies": {
