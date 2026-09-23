@@ -139,7 +139,7 @@ public sealed class Finding
     public required string ImageContentType { get; set; }
     public required string ImageFileName { get; set; }
     [JsonIgnore]
-    public required byte[] ImageData { get; set; }
+    public byte[] ImageData { get; set; } = [];
     public Point Geometry { get; set; } = default!;
 }
 
