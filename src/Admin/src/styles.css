@@ -100,3 +100,5 @@ aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; }
 .upload-history-list li span, .upload-history-list li small { color: #536176; font-size: .8rem; }
 @media (max-width: 900px) { .layout { grid-template-columns: 16rem 1fr; } .map-toolbar { left: .4rem; right: .4rem; bottom: .4rem; } .map-toolbar-group { border-right: 0; } }
 @media (max-width: 700px) { .role-selection .role-picker button:first-of-type { display: none; } }
+.finding-position { display: grid; grid-template-columns: 1fr 1fr auto; gap: .6rem; align-items: end; margin-bottom: .65rem; }
+.finding-position button { width: auto; margin: 0; }
