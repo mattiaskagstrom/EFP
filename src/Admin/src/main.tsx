@@ -42,6 +42,8 @@ const strokeMap: Record<StrokeStyle, string | undefined> = { solid: undefined, d
 const toDateTimeLocal = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : '';
 const formatDateTime = (value: string) => value ? new Date(value).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : '';
 const investigationStatusLabel = (status: string) => ({ Planned: 'Planerad', Active: 'Aktiv', Paused: 'Pausad', Closed: 'Avslutad', Archived: 'Arkiverad' }[status] ?? status);
+type AdminIdentity = { id: string; userName: string; roles: string[] };
+const normalizeAdminIdentity = (value: any): AdminIdentity | null => value ? { id: String(value.id), userName: value.userName ?? '', roles: Array.isArray(value.roles) ? value.roles : value.role ? [value.role] : [] } : null;
 
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
@@ -97,7 +99,7 @@ function App() {
     setInvestigationsLoaded(true);
   };
   useEffect(() => {
-    void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(identity); setAuthChecked(true); }).catch(() => setAuthChecked(true));
+    void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(normalizeAdminIdentity(identity)); setAuthChecked(true); }).catch(() => setAuthChecked(true));
   }, []);
   useEffect(() => { if (authChecked && (route.kind !== 'investigation-list' || route.role !== 'admin' || adminIdentity)) void load(); }, [authChecked, route.kind, 'role' in route ? route.role : undefined, adminIdentity]);
   useEffect(() => {
@@ -472,9 +474,9 @@ function App() {
 
   if (route.kind === 'not-found') return <RouteNotFound onHome={() => go('/')} />;
   if (route.kind === 'role-picker') return <RolePicker onSelect={role => go(`/${role}`)} />;
-  if (route.kind === 'superadmin-system' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); }} onBack={() => go('/')} />;
+  if (route.kind === 'superadmin-system' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(normalizeAdminIdentity(identity)); }} onBack={() => go('/')} />;
   if (route.kind === 'superadmin-system') return <SuperadminSystemView onBack={() => go('/admin')} />;
-  if ('role' in route && route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); void load(); }} onBack={() => go('/')} />;
+  if ('role' in route && route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(normalizeAdminIdentity(identity)); void load(); }} onBack={() => go('/')} />;
   if (!selected) {
     const visibleInvestigations = route.role === 'user' ? investigations.filter(item => ['Planned', 'Active'].includes(item.status)) : investigations;
     return <InvestigationPicker role={route.role} investigations={visibleInvestigations} name={name} error={error} onNameChange={setName} onCreate={() => void createInvestigation()} onSelect={item => selectInvestigation(item, route.role)} onBack={() => go('/')} />;
@@ -482,7 +484,7 @@ function App() {
   if (route.role === 'user') return <UserInvestigationView investigation={selected} onBack={() => go('/user')} />;
 
   return <main className="app-shell">
-    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span>{adminIdentity?.roles.includes('Superadmin') && <button className="header-action" onClick={() => go('/admin/system')}>Systemöversikt</button>}<button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
+    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span>{adminIdentity?.roles?.includes('Superadmin') && <button className="header-action" onClick={() => go('/admin/system')}>Systemöversikt</button>}<button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
     {error && <p className="error">{error}</p>}
     <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
     <div className="layout">
@@ -585,7 +587,7 @@ function AdminAuthView({ onAuthenticated, onBack }: { onAuthenticated: (identity
     const response = await fetch(`${API}/auth/admin/${registerMode ? 'register' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
     if (!response.ok) { setError((await response.text()) || 'Autentiseringen misslyckades.'); return; }
     if (registerMode) { setRegisterMode(false); setError('Kontot skapades. Logga in för att fortsätta.'); return; }
-    onAuthenticated(await response.json());
+    onAuthenticated(normalizeAdminIdentity(await response.json()) ?? { id: '', userName: username, roles: [] });
   };
   return <main className="selection-screen"><section className="investigation-picker auth-panel"><button className="selection-back" onClick={onBack}>← Till startsidan</button><h2>{registerMode ? 'Registrera Admin' : 'Logga in som Admin'}</h2><form onSubmit={event => void submit(event)}><label>Användarnamn<input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" required /></label><label>Lösenord<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registerMode ? 'new-password' : 'current-password'} required /></label>{error && <p className="error">{error}</p>}<button type="submit">{registerMode ? 'Registrera' : 'Logga in'}</button></form><button className="secondary-action" onClick={() => { setRegisterMode(current => !current); setError(''); }}>{registerMode ? 'Jag har redan ett konto' : 'Registrera nytt Admin-konto'}</button></section></main>;
 }
