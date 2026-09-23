@@ -90,7 +90,7 @@ fi
 cd /opt/efp
 if [[ ! -f /opt/efp/.env ]]; then
   DB_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 || true)"
-  printf 'EFP_DB_PASSWORD=%s\nASPNETCORE_ENVIRONMENT=Production\n' "$DB_PASSWORD" > /opt/efp/.env
+  printf 'EFP_DB_PASSWORD=%s\nASPNETCORE_ENVIRONMENT=Production\n# Konfigurera Superadmin__Username och Superadmin__Password före skarp drift.\n' "$DB_PASSWORD" > /opt/efp/.env
   chmod 600 /opt/efp/.env
 fi
 docker compose up -d --build

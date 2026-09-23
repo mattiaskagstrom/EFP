@@ -18,6 +18,53 @@ Skriptet hämtar Debian 12, skapar en unprivilegierad LXC med Docker-features, i
 
 Admin-gränssnittet exponeras på port `5173` och API/OpenAPI på port `8080`. Efter installation visas LXC-IP och root-lösenord.
 
+## Konfigurera Superadmin-kontot
+
+Superadmin-kontot skapas vid API:ets uppstart från konfigurationen `Superadmin__Username` och `Superadmin__Password`. På Proxmox ligger konfigurationen i `/opt/efp/.env` inne i LXC-containern.
+
+Anslut till containern:
+
+```bash
+pct enter <CT-ID>
+cd /opt/efp
+```
+
+Öppna `.env` och lägg till ett unikt konto och lösenord:
+
+```bash
+nano /opt/efp/.env
+```
+
+Exempel:
+
+```dotenv
+EFP_DB_PASSWORD=<databaslösenordet som installationsskriptet skapade>
+ASPNETCORE_ENVIRONMENT=Production
+Superadmin__Username=superadmin
+Superadmin__Password=<minst 10 tecken>
+```
+
+Lösenordet måste vara minst 10 tecken. Använd gärna ett slumpmässigt lösenord med minst 20 tecken och undvik radbrytningar; värden med specialtecken kan omges av dubbla citationstecken i `.env`.
+
+Starta om API-containern så att konfigurationen läses in:
+
+```bash
+chmod 600 /opt/efp/.env
+docker compose up -d --force-recreate api
+docker compose logs --tail=100 api
+```
+
+När API-containern startar skapas rollen `Superadmin` och användaren om de inte redan finns. Logga sedan in i adminvyn och öppna `/admin/system` för att kontrollera systemöversikten.
+
+Viktigt:
+
+- Lägg aldrig `.env` i Git och visa inte lösenordet i loggar eller skärmdumpar.
+- Om kontot redan finns lägger bootstrapen bara till rollen `Superadmin`; den ändrar inte lösenordet vid varje omstart. Sätt därför värdena innan första uppstarten.
+- Om konfigurationen saknas startar API:et fortfarande, men något Superadmin-konto skapas inte.
+- Konfigurationen gäller API-containern. Ändra inte bara miljövariabler på Proxmox-värden utan att återskapa containern.
+
+Se även [Bootstrap av Superadmin](drift-bootstrap-superadmin.md) och [Autentisering och behörighet](autentisering-och-behorighet.md).
+
 ## Uppdatering
 
 ```bash
