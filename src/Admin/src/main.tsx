@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
-import { ImageOverlay, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, ImageOverlay, MapContainer, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { featureCollection } from '@turf/helpers';
 import polygonToLine from '@turf/polygon-to-line';
@@ -21,6 +21,7 @@ import { validateTrackFile } from './trackUpload';
 type Investigation = { id: string; name: string; status: string; isPublic?: boolean; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type InvestigationAdmin = { id: string; username: string; isOwner: boolean; createdAt: string };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
+type Finding = { id: string; submittedBy: string; description?: string | null; observedAt: string; submittedAt: string; imageUrl: string; longitude: number; latitude: number };
 type Sector = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
 type InvestigationMap = { id: string; name: string; contentType: string; west: number; south: number; east: number; north: number; imageUrl: string };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
@@ -48,6 +49,7 @@ function App() {
   const [investigationsLoaded, setInvestigationsLoaded] = useState(false);
   const [selected, setSelected] = useState<Investigation | null>(null);
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [ownMaps, setOwnMaps] = useState<InvestigationMap[]>([]);
   const [visibleOwnMaps, setVisibleOwnMaps] = useState<Record<string, boolean>>({});
@@ -76,6 +78,7 @@ function App() {
   const [saveConfirmation, setSaveConfirmation] = useState(false);
   const [exportSectorIds, setExportSectorIds] = useState<string[]>([]);
   const [exportTrackIds, setExportTrackIds] = useState<string[]>([]);
+  const [exportFindingIds, setExportFindingIds] = useState<string[]>([]);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '', isPublic: true });
@@ -120,16 +123,18 @@ function App() {
     return () => { cancelled = true; };
   }, [route, investigations, investigationsLoaded]);
   const loadSelectedData = async (investigation: Investigation) => {
-    const [sectorResponse, trackResponse, referencePointResponse, mapResponse] = await Promise.all([
+    const [sectorResponse, trackResponse, referencePointResponse, mapResponse, findingResponse] = await Promise.all([
       fetch(`${API}/investigations/${investigation.id}/sectors`),
       fetch(`${API}/investigations/${investigation.id}/tracks.geojson`),
       fetch(`${API}/investigations/${investigation.id}/reference-points`),
       fetch(`${API}/investigations/${investigation.id}/maps`),
+      fetch(`${API}/investigations/${investigation.id}/findings`),
     ]);
     const loadedSectors = sectorResponse.ok ? await sectorResponse.json() : [];
     const trackCollection = trackResponse.ok ? await trackResponse.json() : { features: [] };
     const loadedReferencePoints = referencePointResponse.ok ? await referencePointResponse.json() : [];
     const loadedMaps = mapResponse.ok ? await mapResponse.json() : [];
+    const loadedFindings = findingResponse.ok ? await findingResponse.json() : [];
     const loadedTracks = (trackCollection.features ?? []).filter((feature: any) => feature?.geometry?.type === 'LineString' && Array.isArray(feature.geometry.coordinates)).map((feature: any) => ({
       id: String(feature.id),
       callsign: feature.properties?.callsign,
@@ -142,6 +147,7 @@ function App() {
     }));
     setSectorDrafts(Object.fromEntries(loadedSectors.map((sector: Sector) => [sector.id, { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null }])));
     setTracks(loadedTracks);
+    setFindings(loadedFindings);
     setReferencePoints(loadedReferencePoints);
     setOwnMaps(loadedMaps);
     setVisibleOwnMaps(Object.fromEntries(loadedMaps.map((map: InvestigationMap) => [map.id, true])));
@@ -150,7 +156,7 @@ function App() {
     setExpandedTrackId(null);
     setCheckedSectorIds([]);
   };
-  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFindingIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setFindings([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => { if (editor) setInvalidSectorIds(editor.getInvalidSectorIds()); }, [editor, sectors]);
   useEffect(() => {
@@ -434,6 +440,7 @@ function App() {
   const exportSelection: ExportSelection = {
     sectorIds: exportSectorIds,
     trackIds: exportTrackIds,
+    findingIds: exportFindingIds,
     from: exportFrom ? new Date(exportFrom).toISOString() : undefined,
     to: exportTo ? new Date(exportTo).toISOString() : undefined,
   };
@@ -497,8 +504,9 @@ function App() {
             })}</div></>}
         </section>
         <section className="sidebar-section tracks-section"><button type="button" className="tracks-section-toggle" aria-expanded={tracksExpanded} onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && <TrackList tracks={tracks} visibleTracks={visibleTracks} onVisibleChange={(trackId, visible) => setVisibleTracks(current => ({ ...current, [trackId]: visible }))} selectedTrackId={selectedTrackId} expandedTrackId={expandedTrackId} onSelect={setSelectedTrackId} onToggleExpanded={trackId => setExpandedTrackId(current => current === trackId ? null : trackId)} onUpdatePod={(track, value) => { void updateTrackPod(track, value); }} />}</section>
+        <details className="sidebar-section findings-section"><summary>Fynd ({findings.length})</summary>{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : <ul className="upload-history-list">{findings.map(finding => <li key={finding.id}><img className="finding-thumbnail" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="" /><strong>{finding.submittedBy}</strong><span>{formatDateTime(finding.observedAt)} · {finding.latitude.toFixed(5)}, {finding.longitude.toFixed(5)}</span>{finding.description && <small>{finding.description}</small>}</li>)}</ul>}</details>
         <details className="sidebar-section own-maps-section"><summary>Egna kartor</summary><div className="own-map-upload"><label>Västlig longitud<input type="number" step="any" value={mapBounds.west} onChange={event => setMapBounds(current => ({ ...current, west: event.target.value }))} /></label><label>Sydlig latitud<input type="number" step="any" value={mapBounds.south} onChange={event => setMapBounds(current => ({ ...current, south: event.target.value }))} /></label><label>Östlig longitud<input type="number" step="any" value={mapBounds.east} onChange={event => setMapBounds(current => ({ ...current, east: event.target.value }))} /></label><label>Nordlig latitud<input type="number" step="any" value={mapBounds.north} onChange={event => setMapBounds(current => ({ ...current, north: event.target.value }))} /></label><input id="own-map-upload" className="file-input" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={event => void uploadOwnMap(event)} /><label className="file-button" htmlFor="own-map-upload">Ladda upp kartbild</label></div>{ownMaps.length === 0 ? <p className="muted">Inga egna kartor uppladdade.</p> : <div className="own-map-list">{ownMaps.map(map => <div className="own-map-item" key={map.id}><label><input type="checkbox" checked={visibleOwnMaps[map.id] ?? true} onChange={event => setVisibleOwnMaps(current => ({ ...current, [map.id]: event.target.checked }))} /> {map.name}</label><button type="button" className="danger-button" onClick={() => void deleteOwnMap(map)}>Radera</button></div>)}</div>}</details>
-        <ExportPanel sectors={sectors} tracks={tracks} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} />
+        <ExportPanel sectors={sectors} tracks={tracks} findings={findings} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, findingIds: exportFindingIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFindingIdsChange={setExportFindingIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} getFindingUrl={format => format.findings(API, selected.id, exportSelection)} />
         <details className="sidebar-section import-section"><summary>Importera</summary><div className="import-links"><section><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section><section><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label></section></div></details>
       </aside>
       <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} />{ownMaps.filter(map => visibleOwnMaps[map.id] !== false).map(map => <ImageOverlay key={map.id} url={`${API.replace(/\/api\/v1$/, '')}${map.imageUrl}`} bounds={[[map.south, map.west], [map.north, map.east]]} opacity={0.8} />)}<TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
@@ -599,6 +607,7 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const [connectionCode, setConnectionCode] = useState(new URLSearchParams(window.location.search).get('code') ?? '');
   const [connectionCallsign, setConnectionCallsign] = useState('');
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
   const [callsign, setCallsign] = useState('');
   const [pod, setPod] = useState('');
@@ -609,6 +618,11 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const [uploadMessage, setUploadMessage] = useState('');
   const [uploadHistory, setUploadHistory] = useState<UploadedTrack[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [findingImage, setFindingImage] = useState<File | null>(null);
+  const [findingDescription, setFindingDescription] = useState('');
+  const [findingObservedAt, setFindingObservedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [findingLatitude, setFindingLatitude] = useState('');
+  const [findingLongitude, setFindingLongitude] = useState('');
   useEffect(() => {
     const stored = localStorage.getItem(connectionKey);
     if (!stored) { setConnectionChecked(true); return; }
@@ -632,9 +646,17 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   useEffect(() => {
     if (!connection) return;
     let cancelled = false;
-    void fetch(`${API}/investigations/${investigation.id}/sectors`, { headers: { Authorization: `Bearer ${connection.token}` } }).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
+    void Promise.all([fetch(`${API}/investigations/${investigation.id}/sectors`, { headers: { Authorization: `Bearer ${connection.token}` } }), fetch(`${API}/investigations/${investigation.id}/findings`, { headers: { Authorization: `Bearer ${connection.token}` } })]).then(async ([sectorResponse, findingResponse]) => { const [sectorData, findingData] = await Promise.all([sectorResponse.ok ? sectorResponse.json() : [], findingResponse.ok ? findingResponse.json() : []]); if (!cancelled) { setSectors(sectorData); setFindings(findingData); setSelectedSectorIds(sectorData.map((sector: Sector) => sector.id)); } });
     return () => { cancelled = true; };
   }, [investigation.id, connection]);
+  const submitFinding = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!connection || !findingImage || !findingLatitude || !findingLongitude) { setUploadMessage('Bild och position måste anges för fyndet.'); return; }
+    const form = new FormData(); form.append('image', findingImage); form.append('latitude', findingLatitude); form.append('longitude', findingLongitude); form.append('observedAt', new Date(findingObservedAt).toISOString()); if (findingDescription.trim()) form.append('description', findingDescription.trim());
+    const response = await fetch(`${API}/investigations/${investigation.id}/findings`, { method: 'POST', headers: { Authorization: `Bearer ${connection.token}` }, body: form });
+    if (!response.ok) { setUploadMessage((await response.text()) || 'Fyndet kunde inte skickas.'); return; }
+    const finding = await response.json() as Finding; setFindings(current => [finding, ...current]); setFindingImage(null); setFindingDescription(''); setUploadMessage('Fyndet skickades.');
+  };
   useEffect(() => {
     if (!connection?.callsign) { setUploadHistory([]); return; }
     let cancelled = false;
@@ -687,6 +709,12 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
     const blob = await response.blob();
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-spår-${format.label.replaceAll(' ', '-').toLowerCase()}`; link.click(); URL.revokeObjectURL(url);
   };
+  const downloadFindingExport = async (format: ExportFormat) => {
+    if (!connection || selectedSectorIds.length === 0) return;
+    const response = await fetch(format.findings(API, investigation.id, exportSelection), { headers: { Authorization: `Bearer ${connection.token}` } });
+    if (!response.ok) { setUploadMessage('Fyndexporten kunde inte hämtas.'); return; }
+    const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-fynd-${format.label.replaceAll(' ', '-').toLowerCase()}`; link.click(); URL.revokeObjectURL(url);
+  };
   if (!connectionChecked) return <main className="user-shell"><section className="user-panel"><p>Laddar anslutning…</p></section></main>;
   if (!connection) return <UserConnectView investigation={investigation} code={connectionCode} callsign={connectionCallsign} error={connectionError} onCodeChange={setConnectionCode} onCallsignChange={setConnectionCallsign} onSubmit={connect} onBack={onBack} />;
   return <main className="user-shell">
@@ -698,6 +726,8 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
       <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p><div className="user-export-group"><strong>Hämta valda sektorer</strong><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`sector-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadSectorExport(format); }}>{format.label}</a>)}</div></div><div className="user-export-group"><strong>Hämta spår som intersectar valda sektorer</strong><p className="muted">Hela spåret hämtas även om det fortsätter utanför sektorerna.</p><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`track-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadTrackExport(format); }}>{format.label}</a>)}</div></div></section>
       <section className="user-section"><h3>Ladda upp spår från extern GPS</h3><label>Anropsnamn<input value={callsign} onChange={event => setCallsign(event.target.value)} placeholder="Exempel: Alfa 1" required /></label><label>POD (%)<input type="number" min="0" max="100" step="0.1" value={pod} onChange={event => setPod(event.target.value)} placeholder="Inte angivet" /></label><label>Patrull/grupp<input value={assignedGroup} onChange={event => setAssignedGroup(event.target.value)} placeholder="Exempel: Alfa 1" /></label><label>Sektor<select value={sectorId} onChange={event => setSectorId(event.target.value)}><option value="">Ingen sektor vald</option>{sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></label><label>Anteckning<textarea value={notes} onChange={event => setNotes(event.target.value)} rows={3} /></label><input id="user-track-upload" className="file-input" type="file" accept=".gpx,application/gpx+xml" multiple onChange={event => void uploadTracks(event)} /><label className="file-button" htmlFor="user-track-upload">{uploading ? 'Laddar upp…' : 'Välj spårfiler'}</label>{uploadMessage && <p className="upload-message">{uploadMessage}</p>}{uploadItems.length > 0 && <ul className="upload-status-list">{uploadItems.map(item => <li key={item.id}><span>{item.file.name}</span><small className={`upload-status-${item.status}`}>{item.message || (item.status === 'uploading' ? 'Laddar upp…' : 'Väntar…')}</small>{item.status === 'error' && <button type="button" onClick={() => void uploadOne(item)}>Försök igen</button>}</li>)}</ul>}</section>
       <section className="user-section"><h3>Mina uppladdningar</h3>{uploadHistory.length === 0 ? <p className="muted">Inga uppladdningar hittades för anropsnamnet.</p> : <ul className="upload-history-list">{uploadHistory.map(track => <li key={track.id}><strong>{track.sourceFile || 'GPX-spår'}</strong><span>{track.assignedGroup || 'Ingen grupp'} · {track.pod === null || track.pod === undefined ? 'POD ej angiven' : `POD ${track.pod}%`}</span>{track.notes && <small>{track.notes}</small>}</li>)}</ul>}</section>
+      <section className="user-section"><h3>Skicka in fynd</h3><form onSubmit={event => void submitFinding(event)}><label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => setFindingImage(event.target.files?.[0] ?? null)} required /></label><div className="finding-position"><label>Latitud<input type="number" step="any" value={findingLatitude} onChange={event => setFindingLatitude(event.target.value)} required /></label><label>Longitud<input type="number" step="any" value={findingLongitude} onChange={event => setFindingLongitude(event.target.value)} required /></label></div><label>Tidpunkt<input type="datetime-local" value={findingObservedAt} onChange={event => setFindingObservedAt(event.target.value)} required /></label><label>Beskrivning<textarea value={findingDescription} onChange={event => setFindingDescription(event.target.value)} rows={3} /></label><button type="submit">Skicka fynd</button></form></section>
+      <section className="user-section"><h3>Fynd i valda sektorer</h3><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`finding-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadFindingExport(format); }}>{format.label}</a>)}</div></section>
       <p className="muted user-scope-note">Användarläget visar endast planerade och aktiva insatser. QR-/kodanslutning införs i nästa steg.</p>
     </section>
   </main>;
@@ -706,18 +736,22 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
 type ExportPanelProps = {
   sectors: Sector[];
   tracks: Track[];
-  selection: { sectorIds: string[]; trackIds: string[]; from: string; to: string };
+  findings: Finding[];
+  selection: { sectorIds: string[]; trackIds: string[]; findingIds: string[]; from: string; to: string };
   onSectorIdsChange: (ids: string[]) => void;
   onTrackIdsChange: (ids: string[]) => void;
+  onFindingIdsChange: (ids: string[]) => void;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
   getSectorUrl: (format: ExportFormat) => string;
   getTrackUrl: (format: ExportFormat) => string;
+  getFindingUrl: (format: ExportFormat) => string;
 };
 
-function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIdsChange, onFromChange, onToChange, getSectorUrl, getTrackUrl }: ExportPanelProps) {
+function ExportPanel({ sectors, tracks, findings, selection, onSectorIdsChange, onTrackIdsChange, onFindingIdsChange, onFromChange, onToChange, getSectorUrl, getTrackUrl, getFindingUrl }: ExportPanelProps) {
   const allSectorIds = sectors.map(sector => sector.id);
   const allTrackIds = tracks.map(track => track.id);
+  const allFindingIds = findings.map(finding => finding.id);
   const toggle = (id: string, checked: boolean, selectedIds: string[], allIds: string[], onChange: (ids: string[]) => void) => {
     if (checked) {
       if (selectedIds.length > 0 && !selectedIds.includes(id)) onChange([...selectedIds, id]);
@@ -734,9 +768,12 @@ function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIds
       <fieldset><legend>Spår</legend>
         {tracks.length === 0 ? <span className="muted">Inga spår.</span> : tracks.map(track => <label key={track.id} className="export-checkbox"><input type="checkbox" checked={selection.trackIds.length === 0 || selection.trackIds.includes(track.id)} onChange={event => toggle(track.id, event.target.checked, selection.trackIds, allTrackIds, onTrackIdsChange)} /> {track.sourceFile ?? track.callsign ?? 'GPX-import'}</label>)}
       </fieldset>
+      <fieldset><legend>Fynd</legend>
+        {findings.length === 0 ? <span className="muted">Inga fynd.</span> : findings.map(finding => <label key={finding.id} className="export-checkbox"><input type="checkbox" checked={selection.findingIds.length === 0 || selection.findingIds.includes(finding.id)} onChange={event => toggle(finding.id, event.target.checked, selection.findingIds, allFindingIds, onFindingIdsChange)} /> {finding.submittedBy} · {formatDateTime(finding.observedAt)}</label>)}
+      </fieldset>
       <fieldset><legend>Tidsintervall för spår</legend><div className="export-period"><label>Från<input type="datetime-local" value={selection.from} onChange={event => onFromChange(event.target.value)} /></label><label>Till<input type="datetime-local" value={selection.to} onChange={event => onToChange(event.target.value)} /></label></div><span className="muted">Spår utan tidsstämplar tas inte med när intervall anges.</span></fieldset>
     </div>
-    <div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={getSectorUrl(format)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={getTrackUrl(format)}>{format.label}</a>)}</div>
+    <div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={getSectorUrl(format)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={getTrackUrl(format)}>{format.label}</a>)}<strong>Fynd</strong>{exportFormats.map(format => <a key={`finding-${format.label}`} href={getFindingUrl(format)}>{format.label}</a>)}</div>
   </details>;
 }
 
@@ -815,6 +852,10 @@ function ReferencePointLayers({ referencePoints }: { referencePoints: ReferenceP
   return null;
 }
 
+function FindingLayers({ findings }: { findings: Finding[] }) {
+  return <>{findings.map(finding => <CircleMarker key={finding.id} center={[finding.latitude, finding.longitude]} radius={8} pathOptions={{ color: '#dc2626', fillColor: '#f87171', fillOpacity: 0.9 }}><Popup><strong>Fynd</strong><br />{finding.submittedBy}<br />{formatDateTime(finding.observedAt)}{finding.description && <><br />{finding.description}</>}</Popup></CircleMarker>)}</>;
+}
+
 function TrackLayers({ tracks, visibleTracks, selectedTrackId, onTrackSelect }: { tracks: Track[]; visibleTracks: Record<string, boolean>; selectedTrackId: string | null; onTrackSelect: (trackId: string) => void }) {
   const map = useMap();
   const trackLayers = useRef<Record<string, L.Layer>>({});
@@ -865,6 +906,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const [textMode, setTextMode] = useState(false);
   const [referencePointMode, setReferencePointMode] = useState<ReferencePoint['type'] | null>(null);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
+  const [mapFindings, setMapFindings] = useState<Finding[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   const settings = useRef({ color, strokeStyle });
   const nextSectorNameRef = useRef(nextSectorName);
@@ -872,6 +914,12 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   nextSectorNameRef.current = nextSectorName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
+  useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
+  useEffect(() => {
+    const group = L.layerGroup().addTo(map);
+    mapFindings.forEach(finding => L.circleMarker([finding.latitude, finding.longitude], { radius: 8, color: '#dc2626', fillColor: '#f87171', fillOpacity: 0.9 }).bindTooltip(`Fynd från ${escapeHtml(finding.submittedBy)}<br>${formatDateTime(finding.observedAt)}`).addTo(group));
+    return () => { group.remove(); };
+  }, [map, mapFindings]);
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
   const isSectorLayer = (layer: any) => Boolean(layer.__sectorId || layer.__sector);

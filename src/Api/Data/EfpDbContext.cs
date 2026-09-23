@@ -10,6 +10,7 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : Ident
     public DbSet<Investigation> Investigations => Set<Investigation>();
     public DbSet<Sector> Sectors => Set<Sector>();
     public DbSet<Track> Tracks => Set<Track>();
+    public DbSet<Finding> Findings => Set<Finding>();
     public DbSet<ReferencePoint> ReferencePoints => Set<ReferencePoint>();
     public DbSet<InvestigationMap> InvestigationMaps => Set<InvestigationMap>();
     public DbSet<InvestigationAdmin> InvestigationAdmins => Set<InvestigationAdmin>();
@@ -47,6 +48,9 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : Ident
         modelBuilder.Entity<InvestigationMap>().HasIndex(x => x.InvestigationId);
         modelBuilder.Entity<Sector>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<Track>().HasIndex(x => x.Geometry).HasMethod("gist");
+        modelBuilder.Entity<Finding>().Property(x => x.Geometry).HasColumnType("geometry (Point, 4326)");
+        modelBuilder.Entity<Finding>().HasIndex(x => x.Geometry).HasMethod("gist");
+        modelBuilder.Entity<Finding>().HasIndex(x => x.InvestigationId);
         modelBuilder.Entity<ReferencePoint>().HasIndex(x => x.Geometry).HasMethod("gist");
     }
 }

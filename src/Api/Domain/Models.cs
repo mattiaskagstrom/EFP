@@ -37,6 +37,7 @@ public sealed class Investigation
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<Sector> Sectors { get; set; } = [];
     public List<Track> Tracks { get; set; } = [];
+    public List<Finding> Findings { get; set; } = [];
     public List<ReferencePoint> ReferencePoints { get; set; } = [];
     public List<InvestigationMap> Maps { get; set; } = [];
     [JsonIgnore]
@@ -124,6 +125,22 @@ public sealed class Track
     public double? Pod { get; set; }
     public LineString Geometry { get; set; } = default!;
     public DateTimeOffset ImportedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class Finding
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid InvestigationId { get; set; }
+    public Investigation? Investigation { get; set; }
+    public required string SubmittedBy { get; set; }
+    public string? Description { get; set; }
+    public DateTimeOffset ObservedAt { get; set; }
+    public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;
+    public required string ImageContentType { get; set; }
+    public required string ImageFileName { get; set; }
+    [JsonIgnore]
+    public required byte[] ImageData { get; set; }
+    public Point Geometry { get; set; } = default!;
 }
 
 public sealed class ReferencePoint

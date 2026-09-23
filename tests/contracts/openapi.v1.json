@@ -17,5 +17,10 @@
     "/api/v1/investigations/{investigationId}/sectors.gpx": ["get"],
     "/api/v1/investigations/{investigationId}/tracks.geojson": ["get"],
     "/api/v1/investigations/{investigationId}/tracks.gpx": ["get"]
+    ,"/api/v1/investigations/{investigationId}/findings": ["get", "post"]
+    ,"/api/v1/investigations/{investigationId}/findings/{findingId}/image": ["get"]
+    ,"/api/v1/investigations/{investigationId}/findings.geojson": ["get"]
+    ,"/api/v1/investigations/{investigationId}/findings.gpx": ["get"]
+    ,"/api/v1/investigations/{investigationId}/findings.garmin.gpx": ["get"]
   }
 }
