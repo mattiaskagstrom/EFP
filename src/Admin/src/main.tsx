@@ -25,7 +25,7 @@ type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
 type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; sectorId?: string; sector?: Partial<Sector>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
 type SectorDetails = Pick<Sector, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 const center: [number, number] = [59.33, 18.06];
@@ -53,6 +53,7 @@ function App() {
   const [expandedSectorId, setExpandedSectorId] = useState<string | null>(null);
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
   const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
+  const [invalidSectorIds, setInvalidSectorIds] = useState<string[]>([]);
   const [sectorsExpanded, setSectorsExpanded] = useState(true);
   const [tracksExpanded, setTracksExpanded] = useState(true);
   const [sectorSearch, setSectorSearch] = useState('');
@@ -90,8 +91,9 @@ function App() {
     setReferencePoints(loadedReferencePoints);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
   };
-  useEffect(() => { setHiddenSectorIds({}); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
+  useEffect(() => { if (editor) setInvalidSectorIds(editor.getInvalidSectorIds()); }, [editor, sectors]);
   useEffect(() => {
     if (!saveConfirmation) return;
     const timeout = window.setTimeout(() => setSaveConfirmation(false), 3000);
@@ -287,6 +289,7 @@ function App() {
   };
   const selectedMapLayer = mapLayers[mapType];
   const matchingSectors = filterSectorsByName(sectors, sectorSearch, Object.fromEntries(Object.entries(sectorDrafts).map(([id, draft]) => [id, draft.name])));
+  const invalidSectorIdSet = new Set([...invalidSectorIds, ...sectors.filter(isInvalidSector).map(sector => sector.id)]);
   const exportSelection: ExportSelection = {
     sectorIds: exportSectorIds,
     trackIds: exportTrackIds,
@@ -307,6 +310,17 @@ function App() {
     if (!response.ok) return setError((await response.text()) || 'Kunde inte spara POD.');
     setTracks(current => current.map(item => item.id === track.id ? { ...item, pod } : item));
   };
+  const removeInvalidSectors = () => {
+    if (invalidSectorIdSet.size === 0 || !editor) return;
+    if (!window.confirm(`Är du säker på att du vill radera ${invalidSectorIdSet.size} ogiltiga sektorer?`)) return;
+    invalidSectorIdSet.forEach(sectorId => editor.removeSector(sectorId));
+    setSectors(current => current.filter(sector => !invalidSectorIdSet.has(sector.id)));
+    setSectorDrafts(current => Object.fromEntries(Object.entries(current).filter(([sectorId]) => !invalidSectorIdSet.has(sectorId))));
+    setHiddenSectorIds(current => Object.fromEntries(Object.entries(current).filter(([sectorId]) => !invalidSectorIdSet.has(sectorId))));
+    setInvalidSectorIds([]);
+    setSelectedSectorId(null);
+    setExpandedSectorId(null);
+  };
 
   if (!selected) return <main className="selection-screen">
     <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>
@@ -321,14 +335,15 @@ function App() {
     <div className="layout">
       <aside className="investigation-sidebar">
         <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button>
-        <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : '💾 Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>↶ Släng ändringar</button></section>
+        <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : '💾 Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>↶ Släng ändringar</button>{invalidSectorIdSet.size > 0 && <button className="danger-button invalid-sector-action" onClick={removeInvalidSectors}>⌫ Radera {invalidSectorIdSet.size} ogiltiga sektorer</button>}</section>
         <section className="sidebar-section sectors-section">
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
           {sectorsExpanded && <><input className="sector-search" type="search" value={sectorSearch} onChange={event => setSectorSearch(event.target.value)} placeholder="Sök sektor-namn" aria-label="Sök sektor-namn" />
             {sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : matchingSectors.length === 0 ? <p className="muted">Inga sektorer matchar sökningen.</p> : matchingSectors.map(sector => {
               const draft = sectorDrafts[sector.id] ?? { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null };
               const expanded = expandedSectorId === sector.id; const hidden = hiddenSectorIds[sector.id] === true;
-              return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''}`} key={sector.id}><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
+              const invalid = invalidSectorIdSet.has(sector.id) || isInvalidSector(sector);
+              return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''} ${invalid ? 'invalid' : ''}`} key={sector.id}><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{invalid ? 'Ogiltig geometri' : hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
                 {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
             })}</>}
         </section>
@@ -755,7 +770,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     const layers = getLayers();
     const draftLayers = layers.filter((layer: any) => !layer.__sectorId && layer.__sector);
     const currentSectorIds = new Set<string>();
-    const requests: Promise<Response>[] = [];
+    const requests: { sectorName: string; request: Promise<Response> }[] = [];
     for (const layer of layers) {
       let coordinates = getSectorCoordinates(layer);
       if (!coordinates) continue;
@@ -768,18 +783,27 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
       }
       if (existing) {
         currentSectorIds.add(existing.id);
-        requests.push(fetch(`${API}/investigations/${investigationId}/sectors/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, poa: existing.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
+        requests.push({ sectorName: existing.name, request: fetch(`${API}/investigations/${investigationId}/sectors/${existing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: existing.name, status: existing.status, searchMethod: 'Patrol', priority: existing.priority, searched: existing.searched, searchedAt: existing.searchedAt, points: existing.points, showName: existing.showName, showArea: existing.showArea, poa: existing.poa ?? null, geometry: { type: geometryType, coordinates } }) }) });
       } else {
         const pending = layer.__sector as Partial<Sector> | undefined;
-        requests.push(fetch(`${API}/investigations/${investigationId}/sectors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: pending?.name ?? `Sektor ${layers.length}`, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, poa: pending?.poa ?? null, geometry: { type: geometryType, coordinates } }) }));
+        const sectorName = pending?.name ?? `Sektor ${layers.length}`;
+        requests.push({ sectorName, request: fetch(`${API}/investigations/${investigationId}/sectors`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: sectorName, status: pending?.status ?? 'NotStarted', searchMethod: 'Patrol', priority: pending?.priority ?? layers.length, searched: pending?.searched ?? false, searchedAt: pending?.searchedAt ?? null, points: pending?.points ?? 0, showName: pending?.showName ?? false, showArea: pending?.showArea ?? false, poa: pending?.poa ?? null, geometry: { type: geometryType, coordinates } }) }) });
       }
     }
     for (const sectorId of initialServerSectorIds.current) {
-      if (!currentSectorIds.has(sectorId)) requests.push(fetch(`${API}/investigations/${investigationId}/sectors/${sectorId}`, { method: 'DELETE' }));
+      if (!currentSectorIds.has(sectorId)) requests.push({ sectorName: `ID ${sectorId}`, request: fetch(`${API}/investigations/${investigationId}/sectors/${sectorId}`, { method: 'DELETE' }) });
     }
-    const responses = await Promise.all(requests);
-    const failed = responses.find(response => !response.ok);
-    if (failed) throw new Error((await failed.text()) || `Kunde inte spara en eller flera sektorer (HTTP ${failed.status}).`);
+    const responses = await Promise.all(requests.map(async item => ({ ...item, response: await item.request })));
+    const failed = responses.find(item => !item.response.ok);
+    if (failed) {
+      const body = await failed.response.text();
+      let detail = body || `HTTP ${failed.response.status}`;
+      try {
+        const problem = JSON.parse(body) as { detail?: string; title?: string; errors?: Record<string, string[]> };
+        detail = problem.detail ?? problem.title ?? (Object.values(problem.errors ?? {}).flat().join(' ') || detail);
+      } catch { /* Behåll råtext om svaret inte är JSON. */ }
+      throw new Error(`Kunde inte spara sektorn "${failed.sectorName}": ${detail}`);
+    }
     // Nya sektorer har först en lokal draft-geometri. När POST/PUT lyckats
     // laddar App om serverdata, så draft-lagren måste tas bort här för att
     // inte lämna kvar en blå spökgeometri utanför sektorlistan.
@@ -789,11 +813,16 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   };
   const discardChanges = () => { stop(); history.current = [history.current[0]]; historyIndex.current = 0; onReady(api); };
   const removeSector = (sectorId: string) => {
-    const layer = getLayers().find((candidate: any) => candidate.__sector?.id === sectorId);
+    const layer = getLayers().find((candidate: any) => candidate.__sector?.id === sectorId || candidate.__sectorId === sectorId);
     if (!layer) return;
     layer.remove();
     saveHistory();
   };
+  const getInvalidSectorIds = () => getLayers().filter((layer: any) => {
+    if (!layer.__sector) return false;
+    const geometryType = layer.__sector.geometry?.type ?? layer.toGeoJSON().geometry.type;
+    return geometryType === 'Polygon' && !normalizePolygonCoordinates(getSectorCoordinates(layer) ?? []);
+  }).map((layer: any) => layer.__sector.id ?? layer.__sectorId).filter((id: unknown): id is string => typeof id === 'string');
   const saveReferencePoint = async (type: ReferencePoint['type'], latitude: number, longitude: number) => {
     const labels: Record<ReferencePoint['type'], string> = { Pls: 'PLS', Lkp: 'LKP', Ipp: 'IPP' };
     const label = window.prompt(`Namn på ${labels[type]}`, labels[type]);
@@ -807,7 +836,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   const createSectorLayer = (sector: Sector) => sector.geometry.type === 'LineString'
     ? L.polyline(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4 })
@@ -957,7 +986,32 @@ function normalizePolygonCoordinates(coordinates: number[][]): number[][] | null
     const next = ring[index + 1];
     return sum + current[0] * next[1] - next[0] * current[1];
   }, 0));
-  return area > 1e-12 ? ring : null;
+  if (area <= 1e-12 || polygonSelfIntersects(ring)) return null;
+  return ring;
+}
+function isInvalidSector(sector: Sector): boolean {
+  const geometryType = sector.geometry.type ?? 'Polygon';
+  return geometryType === 'Polygon' && normalizePolygonCoordinates(sector.geometry.coordinates) === null;
+}
+function polygonSelfIntersects(ring: number[][]): boolean {
+  const segmentCount = ring.length - 1;
+  for (let first = 0; first < segmentCount; first += 1) {
+    for (let second = first + 1; second < segmentCount; second += 1) {
+      if (second === first + 1 || (first === 0 && second === segmentCount - 1)) continue;
+      if (segmentsIntersect(ring[first], ring[first + 1], ring[second], ring[second + 1])) return true;
+    }
+  }
+  return false;
+}
+function segmentsIntersect(firstStart: number[], firstEnd: number[], secondStart: number[], secondEnd: number[]): boolean {
+  const orientation = (a: number[], b: number[], c: number[]) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const onSegment = (a: number[], b: number[], c: number[]) => Math.min(a[0], c[0]) - 1e-10 <= b[0] && b[0] <= Math.max(a[0], c[0]) + 1e-10 && Math.min(a[1], c[1]) - 1e-10 <= b[1] && b[1] <= Math.max(a[1], c[1]) + 1e-10;
+  const first = orientation(firstStart, firstEnd, secondStart);
+  const second = orientation(firstStart, firstEnd, secondEnd);
+  const third = orientation(secondStart, secondEnd, firstStart);
+  const fourth = orientation(secondStart, secondEnd, firstEnd);
+  if (((first > 1e-10 && second < -1e-10) || (first < -1e-10 && second > 1e-10)) && ((third > 1e-10 && fourth < -1e-10) || (third < -1e-10 && fourth > 1e-10))) return true;
+  return (Math.abs(first) <= 1e-10 && onSegment(firstStart, secondStart, firstEnd)) || (Math.abs(second) <= 1e-10 && onSegment(firstStart, secondEnd, firstEnd)) || (Math.abs(third) <= 1e-10 && onSegment(secondStart, firstStart, secondEnd)) || (Math.abs(fourth) <= 1e-10 && onSegment(secondStart, firstEnd, secondEnd));
 }
 function escapeHtml(value: string): string { return value.replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] ?? character)); }
 
