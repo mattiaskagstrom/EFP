@@ -32,6 +32,19 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Zones" ADD COLUMN IF NOT EXISTS "Poa" double precision NULL;
         ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "Pod" double precision NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;
+        CREATE TABLE IF NOT EXISTS "InvestigationMaps" (
+            "Id" uuid NOT NULL PRIMARY KEY,
+            "InvestigationId" uuid NOT NULL REFERENCES "Investigations" ("Id") ON DELETE CASCADE,
+            "Name" text NOT NULL,
+            "ContentType" text NOT NULL,
+            "Data" bytea NOT NULL,
+            "West" double precision NOT NULL,
+            "South" double precision NOT NULL,
+            "East" double precision NOT NULL,
+            "North" double precision NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "IX_InvestigationMaps_InvestigationId" ON "InvestigationMaps" ("InvestigationId");
         """);
 }
 app.UseCors();
@@ -40,6 +53,7 @@ app.MapHealthChecks("/health");
 app.MapInvestigationEndpoints();
 app.MapSectorEndpoints();
 app.MapReferencePointEndpoints();
+app.MapInvestigationMapEndpoints();
 app.MapImportExportEndpoints();
 app.Run();
 

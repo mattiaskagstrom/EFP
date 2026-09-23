@@ -34,7 +34,10 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Välja karttyp, exempelvis standardkarta, topografisk karta eller satellit.
 - [x] Anpassa kartans vy efter insatsens sektorer.
 - [x] Visa Sverige eller webbläsarens position när sökinsatsen saknar sektorer.
-- [ ] Förhandsvisa och hantera lokalt tillhandahållna kartbilder.
+- [x] Ladda upp egna georefererade PNG- eller JPEG-kartor per sökinsats.
+- [x] Ange kartbildens geografiska gränser vid uppladdning.
+- [x] Visa, dölja och radera egna kartlager.
+- [ ] Förhandsvisa och hantera lokalt tillhandahållna kartbilder i användarläget.
 - [ ] Förbereda eller välja kartunderlag för användning utan internet.
 
 ### Sektorredigering

@@ -9,6 +9,7 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : DbCon
     public DbSet<Sector> Sectors => Set<Sector>();
     public DbSet<Track> Tracks => Set<Track>();
     public DbSet<ReferencePoint> ReferencePoints => Set<ReferencePoint>();
+    public DbSet<InvestigationMap> InvestigationMaps => Set<InvestigationMap>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,6 +24,8 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : DbCon
         modelBuilder.Entity<Sector>().HasQueryFilter(x => !x.IsDeleted);
         modelBuilder.Entity<Track>().Property(x => x.Geometry).HasColumnType("geometry (LineString, 4326)");
         modelBuilder.Entity<ReferencePoint>().Property(x => x.Geometry).HasColumnType("geometry (Point, 4326)");
+        modelBuilder.Entity<InvestigationMap>().ToTable("InvestigationMaps");
+        modelBuilder.Entity<InvestigationMap>().HasIndex(x => x.InvestigationId);
         modelBuilder.Entity<Sector>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<Track>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<ReferencePoint>().HasIndex(x => x.Geometry).HasMethod("gist");
