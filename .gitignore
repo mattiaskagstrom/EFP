@@ -16,3 +16,4 @@ coverage/
 *.tsbuildinfo
 src/Admin/vite.config.js
 src/Admin/vite.config.d.ts
+/work/dotnet-home
