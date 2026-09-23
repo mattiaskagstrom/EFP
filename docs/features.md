@@ -14,7 +14,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Uppdatera URL:en när användaren navigerar mellan lägen och sökinsatser.
 - [x] Användarläget visar endast planerade och aktiva sökinsatser.
 - [x] Användarläget saknar funktioner för att skapa, redigera eller arkivera sökinsatser.
-- [x] Ansluta användarläget med QR-kod eller insatskod.
+- [x] Ansluta användarläget med insatskod.
+- [ ] Ansluta användarläget med QR-kod.
 - [x] Spara användarens anslutning lokalt per insats tillsammans med anropsnamn.
 - [x] Kräva anropsnamn innan användaren kan ladda upp data.
 - [x] Stödja publika och privata insatser.
@@ -106,10 +107,11 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 
 ### Fynd
 
-- [ ] Visa en hopfällbar fyndsektion i adminläget.
-- [ ] Visa fyndets bild, position, tidpunkt och vem som skickade in det.
-- [ ] Visa fynd på karta och i en lista kopplad till den valda sökinsatsen.
-- [ ] Hämta fynd genom att välja sektorer på samma sätt som vid hämtning av spår i användarläget.
+- [x] Visa en hopfällbar fyndsektion i adminläget.
+- [x] Visa fyndets bild, position, tidpunkt och vem som skickade in det.
+- [x] Visa fynd på karta och i en lista kopplad till den valda sökinsatsen.
+- [x] Hämta fynd genom att välja sektorer på samma sätt som vid hämtning av spår i användarläget.
+- [x] Skicka in fynd i användarläget med bild, position, tidpunkt och anropsnamn.
 
 ### Import och export
 
@@ -132,10 +134,10 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 ### Insatsanslutning och uppföljning
 
 - [ ] Skapa QR-kod för att ansluta mobilanvändare till en sökinsats.
-- [ ] Skapa, återkalla och förnya kort anslutningskod.
+- [x] Skapa och rotera kort anslutningskod.
 - [ ] Se anslutna och aktiva deltagare.
 - [ ] Se senaste synkronisering för deltagare och spår.
-- [ ] Se alla inskickade spår, punkter och observationer.
+- [x] Se alla inskickade spår, punkter och observationer.
 - [ ] Filtrera underlag på sektor, tid, patrull, användare och status.
 - [ ] Redigera eller komplettera metadata för inskickat underlag.
 - [ ] Visa ändringshistorik för administratören.
@@ -154,8 +156,8 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 ### Anslutning och insatsinformation
 
 - [ ] Ansluta till en sökinsats genom att skanna en QR-kod.
-- [ ] Ansluta genom att skriva in en kort anslutningskod.
-- [ ] Ange anropsnamn vid anslutning.
+- [x] Ansluta genom att skriva in en kort anslutningskod.
+- [x] Ange anropsnamn vid anslutning.
 - [ ] Se aktuell sökinsats, instruktioner och tilldelad sektor.
 - [ ] Se sektorer, sektorstatus och sektorinstruktioner på karta.
 - [ ] Växla mellan tillgängliga karttyper.
@@ -231,8 +233,8 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 - [x] Välja sektorer för att hämta spår från sökinsatsen.
 - [x] Hämta alla spår som intersectar med valda sektorer, inklusive hela spåret även när det sträcker sig utanför sektorerna.
 - [x] Välja exportformat för de hämtade spåren.
-- [ ] Välja sektorer för att hämta fynd från sökinsatsen på samma sätt som spår.
-- [ ] Välja exportformat eller visningsformat för hämtade fynd.
+- [x] Välja sektorer för att hämta fynd från sökinsatsen på samma sätt som spår.
+- [x] Välja exportformat eller visningsformat för hämtade fynd.
 
 ### Uppladdning av externa spår
 
@@ -247,9 +249,9 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 ### Avgränsning i första versionen
 
 - [x] Inte spela in GPS-spår i webbläsaren.
-- [ ] Inte kräva fullständigt användarkonto.
-- [ ] Inte ge åtkomst till andra deltagares spår.
-- [ ] Börja med onlinebaserat filutbyte.
+- [x] Inte kräva fullständigt användarkonto.
+- [x] Inte ge åtkomst till andra deltagares spår.
+- [x] Börja med onlinebaserat filutbyte.
 - [ ] Förbereda för framtida PWA-cache och köade uppladdningar utan uppkoppling.
 
 ## Gemensamma framtida funktioner
