@@ -29,8 +29,8 @@ public static class ImportExportEndpoints
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
         group.MapPost("/tracks/import", ImportGpxAsync).DisableAntiforgery();
         group.MapGet("/tracks", ListTracksAsync);
-        group.MapPatch("/tracks/{trackId:guid}", UpdateTrackMetadataAsync);
-        group.MapPost("/sectors/import", ImportSectorsGpxAsync).DisableAntiforgery();
+        group.MapPatch("/tracks/{trackId:guid}", UpdateTrackMetadataAsync).RequireAuthorization("Admin");
+        group.MapPost("/sectors/import", ImportSectorsGpxAsync).DisableAntiforgery().RequireAuthorization("Admin");
         group.MapGet("/sectors.geojson", ExportSectorsGeoJsonAsync);
         group.MapGet("/sectors.gpx", ExportSectorsGarminGpxAsync);
         group.MapGet("/sectors.garmin.gpx", ExportSectorsGarminGpxAsync);
@@ -40,8 +40,11 @@ public static class ImportExportEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ImportGpxAsync(Guid investigationId, IFormFile file, [FromForm] string? callsign, [FromForm] double? pod, [FromForm] string? assignedGroup, [FromForm] Guid? sectorId, [FromForm] string? notes, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ImportGpxAsync(Guid investigationId, IFormFile file, [FromForm] string? callsign, [FromForm] double? pod, [FromForm] string? assignedGroup, [FromForm] Guid? sectorId, [FromForm] string? notes, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        var isAdmin = http.User.Identity?.IsAuthenticated == true && (http.User.IsInRole("Admin") || http.User.IsInRole("Superadmin"));
+        var userSession = isAdmin ? null : await UserSessionService.FindAsync(http, db, ct);
+        if (!isAdmin && userSession?.InvestigationId != investigationId) return Results.Unauthorized();
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length == 0 || file.Length > 25 * 1024 * 1024) return Results.BadRequest("GPX file must be between 1 byte and 25 MB.");
         if (pod is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["pod"] = ["POD måste vara mellan 0 och 100."] });

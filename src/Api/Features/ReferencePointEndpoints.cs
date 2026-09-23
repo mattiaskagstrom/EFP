@@ -11,8 +11,12 @@ public static class ReferencePointEndpoints
     public static IEndpointRouteBuilder MapReferencePointEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}/reference-points");
-        group.MapGet("", async (Guid investigationId, EfpDbContext db, CancellationToken ct) =>
-            Results.Ok((await db.ReferencePoints.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct)).Select(ToResponse)));
+        group.MapGet("", async (Guid investigationId, EfpDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var session = await UserSessionService.FindAsync(http, db, ct);
+            if (!http.User.IsInRole("Admin") && !http.User.IsInRole("Superadmin") && session?.InvestigationId != investigationId) return Results.Unauthorized();
+            return Results.Ok((await db.ReferencePoints.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct)).Select(ToResponse));
+        });
         group.MapPost("", async (Guid investigationId, ReferencePointRequest request, EfpDbContext db, CancellationToken ct) =>
         {
             if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
@@ -20,7 +24,7 @@ public static class ReferencePointEndpoints
             var point = new ReferencePoint { InvestigationId = investigationId, Type = request.Type, Label = request.Label.Trim(), Geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(request.Longitude, request.Latitude)) };
             db.ReferencePoints.Add(point); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/v1/investigations/{investigationId}/reference-points/{point.Id}", ToResponse(point));
-        });
+        }).RequireAuthorization("Admin");
         return endpoints;
     }
 

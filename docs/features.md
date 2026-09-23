@@ -14,7 +14,11 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Uppdatera URL:en när användaren navigerar mellan lägen och sökinsatser.
 - [x] Användarläget visar endast planerade och aktiva sökinsatser.
 - [x] Användarläget saknar funktioner för att skapa, redigera eller arkivera sökinsatser.
-- [ ] Begränsa användarläget med QR-kod eller insatskod.
+- [x] Ansluta användarläget med QR-kod eller insatskod.
+- [x] Spara användarens anslutning lokalt per insats tillsammans med anropsnamn.
+- [x] Kräva anropsnamn innan användaren kan ladda upp data.
+- [x] Stödja publika och privata insatser.
+- [x] Ogiltigförklara äldre användarsessioner när insatskoden roteras.
 
 ## Webbsida – administrationsgränssnitt
 
@@ -27,6 +31,20 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Redigera sökinsatsens namn, beskrivning och tidsperiod.
 - [x] Ändra sökinsatsens status mellan planerad, aktiv, pausad, avslutad och arkiverad.
 - [x] Arkivera sökinsatser.
+- [x] Registrera och logga in Admin med användarnamn och lösenord.
+- [x] Logga ut Admin och visa aktuell inloggad Admin.
+- [x] Ändra insatsens synlighet mellan publik och privat.
+- [x] Skapa och rotera insatskod.
+- [x] Dela insatsadministration med andra registrerade Admin-konton.
+- [ ] Visa QR-kod som bild och ladda ner den.
+
+### Superadmin
+
+- [x] Bootstrapa ett Superadmin-konto.
+- [x] Se alla insatser oavsett ägare.
+- [x] Lista och återkalla användarsessioner via API.
+- [x] Lista och aktivera/inaktivera Admin-konton via API.
+- [ ] Administrera Admin-konton i färdig webbvy.
 
 ### Karta och kartunderlag
 

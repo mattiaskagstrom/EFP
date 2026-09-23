@@ -11,8 +11,10 @@ public static class SectorEndpoints
     public static IEndpointRouteBuilder MapSectorEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}/sectors");
-        group.MapGet("", async (Guid investigationId, EfpDbContext db, CancellationToken ct) =>
+        group.MapGet("", async (Guid investigationId, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            var session = await UserSessionService.FindAsync(http, db, ct);
+            if (!http.User.IsInRole("Admin") && !http.User.IsInRole("Superadmin") && session?.InvestigationId != investigationId) return Results.Unauthorized();
             var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
             return Results.Ok(sectors.Select(ToResponse));
         });
@@ -25,7 +27,7 @@ public static class SectorEndpoints
             var sector = new Sector { InvestigationId = investigationId, Name = request.Name.Trim(), Instructions = request.Instructions, Status = request.Status, SearchMethod = request.SearchMethod, Priority = request.Priority, AssignedGroup = request.AssignedGroup, Searched = request.Searched, SearchedAt = request.SearchedAt, Points = request.Points, ShowName = request.ShowName, ShowArea = request.ShowArea, Poa = request.Poa, Geometry = geometry };
             db.Sectors.Add(sector); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/v1/investigations/{investigationId}/sectors/{sector.Id}", ToResponse(sector));
-        });
+        }).RequireAuthorization("Admin");
         group.MapPut("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, SectorRequest request, EfpDbContext db, CancellationToken ct) =>
         {
             var sector = await db.Sectors.FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
@@ -34,7 +36,7 @@ public static class SectorEndpoints
             if (!TryCreateGeometry(request.Geometry, out var geometry, out var error)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = [error] });
             sector.Name = request.Name.Trim(); sector.Instructions = request.Instructions; sector.Status = request.Status; sector.SearchMethod = request.SearchMethod; sector.Priority = request.Priority; sector.AssignedGroup = request.AssignedGroup; sector.Searched = request.Searched; sector.SearchedAt = request.SearchedAt; sector.Points = request.Points; sector.ShowName = request.ShowName; sector.ShowArea = request.ShowArea; sector.Poa = request.Poa; sector.Geometry = geometry; sector.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct); return Results.Ok(ToResponse(sector));
-        });
+        }).RequireAuthorization("Admin");
         group.MapDelete("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, EfpDbContext db, CancellationToken ct) =>
         {
             var sector = await db.Sectors.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
@@ -44,7 +46,7 @@ public static class SectorEndpoints
             sector.DeletedAt = DateTimeOffset.UtcNow;
             sector.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct); return Results.NoContent();
-        });
+        }).RequireAuthorization("Admin");
         return endpoints;
     }
 

@@ -59,3 +59,6 @@ En pilot kan anses lyckad när en grupp kan:
 - synkronisera data efteråt
 - se resultatet samlat på karta
 - exportera underlaget för vidare användning
+## Åtkomstmodell
+
+Den tidigare tillfälliga öppna användarlistan ersätts av publika och privata insatser. Publika planerade/aktiva insatser kan hittas i användarläget men kräver anropsnamn innan uppladdning. Privata insatser kräver QR-kod eller insatskod. Användarsessioner saknar automatisk tidsutgång enligt nuvarande beslut, men blir ogiltiga vid kodrotation eller manuell återkallelse.

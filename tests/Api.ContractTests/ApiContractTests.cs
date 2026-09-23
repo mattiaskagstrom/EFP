@@ -2,13 +2,22 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace Efp.Api.ContractTests;
 
-public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFactory>
+public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFactory>, IAsyncLifetime
 {
-    private readonly HttpClient client = factory.CreateClient();
+    private readonly HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+
+    public async Task InitializeAsync()
+    {
+        var login = await client.PostAsJsonAsync("/api/v1/auth/admin/login", new { username = "test-superadmin", password = "CorrectHorseBattery9" });
+        login.EnsureSuccessStatusCode();
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Health_returns_ok()
@@ -25,6 +34,9 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(paths.TryGetProperty("/api/v1/investigations", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/sectors", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/tracks/import", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/auth/admin/login", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/auth/user/connect", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/admin/user-sessions", out _));
     }
 
     [Fact]
@@ -124,6 +136,59 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var created = await valid.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(18, created.GetProperty("longitude").GetDouble());
         Assert.Equal(59, created.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task Admin_can_register_login_and_read_current_identity()
+    {
+        var username = $"admin-{Guid.NewGuid():N}";
+        var register = await client.PostAsJsonAsync("/api/v1/auth/admin/register", new { username, password = "CorrectHorseBattery9" });
+        Assert.Equal(HttpStatusCode.Created, register.StatusCode);
+
+        var login = await client.PostAsJsonAsync("/api/v1/auth/admin/login", new { username, password = "CorrectHorseBattery9" });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+
+        var me = await client.GetFromJsonAsync<JsonElement>("/api/v1/auth/admin/me");
+        Assert.Equal(username, me.GetProperty("userName").GetString());
+        Assert.Contains("Admin", me.GetProperty("roles").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public async Task Public_user_connection_returns_token_and_can_read_session()
+    {
+        var investigation = await CreateInvestigation();
+        var connect = await client.PostAsJsonAsync("/api/v1/auth/user/connect", new { investigationId = investigation, callsign = "Alfa 1", code = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, connect.StatusCode);
+        var connection = await connect.Content.ReadFromJsonAsync<JsonElement>();
+        var token = connection.GetProperty("token").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/user/session");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var session = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+        Assert.Equal("Alfa 1", (await session.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("callsign").GetString());
+    }
+
+    [Fact]
+    public async Task Private_investigation_requires_code_and_rotation_invalidates_session()
+    {
+        var create = await client.PostAsJsonAsync("/api/v1/investigations", new { name = "Privat kontraktinsats", isPublic = false });
+        var investigation = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var denied = await client.PostAsJsonAsync("/api/v1/auth/user/connect", new { investigationId = investigation, callsign = "Bravo", code = "ABCDEFGH" });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        var rotated = await client.PostAsync($"/api/v1/investigations/{investigation}/access-code/rotate", null);
+        Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
+        var code = (await rotated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+        var connected = await client.PostAsJsonAsync("/api/v1/auth/user/connect", new { investigationId = investigation, callsign = "Bravo", code });
+        Assert.Equal(HttpStatusCode.OK, connected.StatusCode);
+        var token = (await connected.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString();
+        var secondRotation = await client.PostAsync($"/api/v1/investigations/{investigation}/access-code/rotate", null);
+        Assert.Equal(HttpStatusCode.OK, secondRotation.StatusCode);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/user/session");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(request)).StatusCode);
     }
 
     [Fact]

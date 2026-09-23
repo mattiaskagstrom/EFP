@@ -12,9 +12,9 @@ public static class InvestigationMapEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}/maps");
         group.MapGet("", ListAsync);
-        group.MapPost("", UploadAsync).DisableAntiforgery();
+        group.MapPost("", UploadAsync).DisableAntiforgery().RequireAuthorization("Admin");
         group.MapGet("/{mapId:guid}/image", ImageAsync);
-        group.MapDelete("/{mapId:guid}", DeleteAsync);
+        group.MapDelete("/{mapId:guid}", DeleteAsync).RequireAuthorization("Admin");
         return endpoints;
     }
 

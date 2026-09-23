@@ -29,6 +29,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Efp"] = database.GetConnectionString(),
+            ["Superadmin:Username"] = "test-superadmin",
+            ["Superadmin:Password"] = "CorrectHorseBattery9",
         }));
     }
 }

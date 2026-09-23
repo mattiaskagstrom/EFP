@@ -2,10 +2,11 @@
 html, body, #root { height: 100%; }
 body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; color: #172033; }
 header { display: flex; align-items: baseline; gap: 1rem; padding: 1rem 1.5rem; background: #172033; color: white; }
+header .header-action { width: auto; margin-left: auto; padding: .35rem .6rem; background: transparent; border-color: rgba(255,255,255,.55); color: white; }
 header h1 { margin: 0; font-size: 1.35rem; } header span { opacity: .7; }
 input, select, textarea, button, a { font: inherit; padding: .5rem .7rem; border: 1px solid #bcc6d6; border-radius: .35rem; background: white; text-decoration: none; color: inherit; }
 button, a { cursor: pointer; } button:disabled { opacity: .45; cursor: default; } .error { color: #b91c1c; padding: 0 1rem; }
-.layout { display: grid; grid-template-columns: 18rem 1fr; height: calc(100vh - 62px); min-height: 0; overflow: hidden; } aside { padding: 1rem; overflow-y: auto; border-right: 1px solid #dbe1ea; } aside h2 { font-size: 1rem; margin-top: 0; }
+.layout { display: grid; grid-template-columns: 21rem 1fr; height: calc(100vh - 62px); min-height: 0; overflow: hidden; } aside { padding: 1rem; overflow-y: auto; border-right: 1px solid #dbe1ea; } aside h2 { font-size: 1rem; margin-top: 0; }
 .investigation-create { display: grid; gap: .45rem; padding-bottom: .75rem; border-bottom: 1px solid #dbe1ea; } .investigation-create button { background: #172033; color: white; border-color: #172033; }
 aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; } aside .selected { border-color: #2563eb; background: #eff6ff; } small { display: block; opacity: .6; margin-top: .2rem; }
 .selection-screen { height: 100%; min-height: 100vh; overflow-y: auto; } .investigation-picker { width: min(34rem, calc(100% - 2rem)); margin: 8vh auto; padding: 1.5rem; border: 1px solid #dbe1ea; border-radius: .6rem; box-shadow: 0 4px 18px rgba(23, 32, 51, .08); } .investigation-picker h2 { margin-top: 0; } .investigation-picker p { color: #536176; } .investigation-list { margin-top: 1rem; } .investigation-list button { display: block; width: 100%; margin: .45rem 0; text-align: left; }
@@ -59,6 +60,19 @@ aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; }
 .efp-map-text { background: transparent; border: 0; color: #172033; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px white, 0 -1px 2px white, 1px 0 2px white, -1px 0 2px white; }
 .track-card { border: 1px solid #dbe1ea; border-radius: .35rem; overflow: visible; } .track-card.selected { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b; } .track-card-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .45rem; width: 100%; padding: .55rem .65rem; border: 0; border-radius: 0; background: #fff; color: #172033; text-align: left; } .track-card-header > span:first-child { overflow-wrap: anywhere; } .track-card-status { color: #536176; font-size: .75rem; } .track-card-body { display: grid !important; height: auto; min-height: 0; max-height: none; visibility: visible; overflow: visible; gap: .5rem; padding: .65rem; border-top: 1px solid #edf0f5; background: #f8fafc; } .track-card-body label { display: grid; gap: .2rem; } .track-card-body .track-visibility { display: flex; align-items: center; gap: .45rem; } .track-metadata-value { color: #536176; overflow-wrap: anywhere; }
 .user-section textarea { width: 100%; min-width: 0; resize: vertical; }
+.auth-panel form, .user-panel form { display: grid; gap: .7rem; } .auth-panel form label, .user-panel form label { display: grid; gap: .25rem; } .secondary-action { width: auto !important; margin-top: .8rem !important; background: transparent !important; border: 0 !important; color: #1d4ed8 !important; }
+.access-code { display: block; padding: .45rem .6rem; border: 1px dashed #2563eb; border-radius: .35rem; background: #eff6ff; color: #1d4ed8; letter-spacing: .15em; text-align: center; }
+.admin-members-list { list-style: none; margin: 8px 0; padding: 0; }
+.admin-members-list li { align-items: center; display: flex; gap: 8px; justify-content: space-between; margin: 5px 0; }
+.admin-member-add { display: flex; align-items: center; gap: 6px; }
+.admin-member-add input { flex: 1 1 8rem; min-width: 0; width: 8rem; padding: .4rem .5rem; }
+.admin-member-add button { flex: 0 0 auto; width: auto; margin: 0; padding: .4rem .55rem; white-space: nowrap; }
+.collapsible-sidebar-section { display: block; }
+.collapsible-sidebar-section > summary { display: flex; align-items: center; cursor: pointer; font-size: .9rem; font-weight: 700; list-style: none; }
+.collapsible-sidebar-section > summary::-webkit-details-marker { display: none; }
+.collapsible-sidebar-section > summary::after { content: '▸'; margin-left: auto; font-size: .75rem; }
+.collapsible-sidebar-section[open] > summary::after { content: '▾'; }
+.collapsible-sidebar-content { display: grid; gap: .45rem; margin-top: .6rem; }
 .upload-status-list, .upload-history-list { display: grid; gap: .4rem; margin: .6rem 0 0; padding: 0; list-style: none; }
 .upload-status-list li, .upload-history-list li { display: grid; gap: .15rem; padding: .5rem; border: 1px solid #dbe1ea; border-radius: .35rem; background: #f8fafc; overflow-wrap: anywhere; }
 .upload-status-list li { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
@@ -66,5 +80,5 @@ aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; }
 .upload-status-list li button { grid-column: 2; grid-row: 1 / span 2; width: auto; margin: 0; }
 .upload-status-success { color: #15803d; } .upload-status-error { color: #b91c1c; }
 .upload-history-list li span, .upload-history-list li small { color: #536176; font-size: .8rem; }
-@media (max-width: 900px) { .layout { grid-template-columns: 14rem 1fr; } .map-toolbar { left: .4rem; right: .4rem; bottom: .4rem; } .map-toolbar-group { border-right: 0; } }
+@media (max-width: 900px) { .layout { grid-template-columns: 16rem 1fr; } .map-toolbar { left: .4rem; right: .4rem; bottom: .4rem; } .map-toolbar-group { border-right: 0; } }
 @media (max-width: 700px) { .role-selection .role-picker button:first-of-type { display: none; } }

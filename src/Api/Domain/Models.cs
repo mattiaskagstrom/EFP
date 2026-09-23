@@ -1,4 +1,6 @@
 using NetTopologySuite.Geometries;
+using Microsoft.AspNetCore.Identity;
+using System.Text.Json.Serialization;
 
 namespace Efp.Api.Domain;
 
@@ -6,6 +8,12 @@ public enum InvestigationStatus { Planned, Active, Paused, Closed, Archived }
 public enum SectorStatus { NotStarted, Assigned, InProgress, Complete, NeedsReview }
 public enum SearchMethod { Patrol, SearchChain, Handrail }
 public enum ReferencePointType { Pls, Lkp, Ipp }
+
+public sealed class ApplicationUser : IdentityUser<Guid>
+{
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
 
 public sealed class Investigation
 {
@@ -15,6 +23,15 @@ public sealed class Investigation
     public DateTimeOffset? StartsAt { get; set; }
     public DateTimeOffset? EndsAt { get; set; }
     public string? SearchConditions { get; set; }
+    public bool IsPublic { get; set; } = true;
+    [JsonIgnore]
+    public string? AccessCodeHash { get; set; }
+    public int AccessCodeVersion { get; set; } = 1;
+    public DateTimeOffset? AccessCodeUpdatedAt { get; set; }
+    [JsonIgnore]
+    public Guid? OwnerId { get; set; }
+    [JsonIgnore]
+    public ApplicationUser? Owner { get; set; }
     public InvestigationStatus Status { get; set; } = InvestigationStatus.Planned;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -22,6 +39,36 @@ public sealed class Investigation
     public List<Track> Tracks { get; set; } = [];
     public List<ReferencePoint> ReferencePoints { get; set; } = [];
     public List<InvestigationMap> Maps { get; set; } = [];
+    [JsonIgnore]
+    public List<InvestigationAdmin> Admins { get; set; } = [];
+    [JsonIgnore]
+    public List<UserSession> UserSessions { get; set; } = [];
+}
+
+public sealed class InvestigationAdmin
+{
+    public Guid InvestigationId { get; set; }
+    [JsonIgnore]
+    public Investigation? Investigation { get; set; }
+    public Guid AdminId { get; set; }
+    [JsonIgnore]
+    public ApplicationUser? Admin { get; set; }
+    public bool IsOwner { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class UserSession
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid InvestigationId { get; set; }
+    [JsonIgnore]
+    public Investigation? Investigation { get; set; }
+    public required string TokenHash { get; set; }
+    public required string Callsign { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset LastSeenAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? RevokedAt { get; set; }
+    public int AccessCodeVersion { get; set; }
 }
 
 public sealed class InvestigationMap

@@ -18,7 +18,8 @@ import { investigationPath, navigateTo, parseRoute, type AppRole, type AppRoute 
 import { TrackList, type Track } from './TrackList';
 import { validateTrackFile } from './trackUpload';
 
-type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
+type Investigation = { id: string; name: string; status: string; isPublic?: boolean; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
+type InvestigationAdmin = { id: string; username: string; isOwner: boolean; createdAt: string };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
 type Sector = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
 type InvestigationMap = { id: string; name: string; contentType: string; west: number; south: number; east: number; north: number; imageUrl: string };
@@ -31,6 +32,10 @@ type SectorDetails = Pick<Sector, 'name' | 'searched' | 'searchedAt' | 'points' 
 type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
+// Admin cookies must be sent in local development where the API and Vite use
+// different ports. Bearer-token calls also continue to work with credentials.
+const nativeFetch = window.fetch.bind(window);
+const fetch = (input: RequestInfo | URL, init?: RequestInit) => nativeFetch(input, { ...init, credentials: 'include' });
 const center: [number, number] = [59.33, 18.06];
 const strokeMap: Record<StrokeStyle, string | undefined> = { solid: undefined, dash: '12 8', dot: '2 8', dashdot: '12 6 2 6' };
 const toDateTimeLocal = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : '';
@@ -73,8 +78,14 @@ function App() {
   const [exportTrackIds, setExportTrackIds] = useState<string[]>([]);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
-  const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
+  const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '', isPublic: true });
   const [investigationSaving, setInvestigationSaving] = useState(false);
+  const [adminIdentity, setAdminIdentity] = useState<{ id: string; userName: string; roles: string[] } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [investigationAdmins, setInvestigationAdmins] = useState<InvestigationAdmin[]>([]);
+  const [adminUsernameToAdd, setAdminUsernameToAdd] = useState('');
+  const [adminAccessError, setAdminAccessError] = useState('');
 
   const load = async () => {
     const response = await fetch(`${API}/investigations`);
@@ -82,32 +93,31 @@ function App() {
     setInvestigations(data);
     setInvestigationsLoaded(true);
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(identity); setAuthChecked(true); }).catch(() => setAuthChecked(true));
+  }, []);
+  useEffect(() => { if (authChecked && (route.kind !== 'investigation-list' || route.role !== 'admin' || adminIdentity)) void load(); }, [authChecked, route.kind, route.kind === 'role-picker' || route.kind === 'not-found' ? undefined : route.role, adminIdentity]);
   useEffect(() => {
     const onPopState = () => setRoute(parseRoute(window.location.pathname));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   useEffect(() => {
-    if (route.kind !== 'investigation') {
-      setSelected(null);
-      setError('');
-      return;
-    }
+    if (route.kind !== 'investigation') { setSelected(null); setError(''); return; }
     if (!investigationsLoaded) return;
-    const investigation = investigations.find(item => item.id === route.id);
-    if (!investigation) {
-      setSelected(null);
-      setError('Sökinsatsen kunde inte hittas. Kontrollera länken.');
-      return;
+    let cancelled = false;
+    const known = investigations.find(item => item.id === route.id);
+    if (known) {
+      if (route.role === 'user' && !['Planned', 'Active'].includes(known.status)) { setSelected(null); setError('Sökinsatsen är inte tillgänglig i användarläget.'); return; }
+      setError(''); setSelected(known); return;
     }
-    if (route.role === 'user' && !['Planned', 'Active'].includes(investigation.status)) {
-      setSelected(null);
-      setError('Sökinsatsen är inte tillgänglig i användarläget. Endast planerade och aktiva insatser kan öppnas.');
-      return;
-    }
-    setError('');
-    setSelected(investigation);
+    if (route.role !== 'user') { setSelected(null); setError('Sökinsatsen kunde inte hittas. Kontrollera länken.'); return; }
+    void fetch(`${API}/investigations/${route.id}`).then(response => {
+      if (response.status === 401) return { id: route.id, name: 'Privat sökinsats', status: 'Planned', isPublic: false } as Investigation;
+      if (!response.ok) throw new Error('Sökinsatsen kunde inte hittas. Kontrollera länken.');
+      return response.json() as Promise<Investigation>;
+    }).then(investigation => { if (!cancelled) { setError(''); setSelected(investigation); } }).catch(cause => { if (!cancelled) { setSelected(null); setError(cause instanceof Error ? cause.message : 'Sökinsatsen kunde inte hittas.'); } });
+    return () => { cancelled = true; };
   }, [route, investigations, investigationsLoaded]);
   const loadSelectedData = async (investigation: Investigation) => {
     const [sectorResponse, trackResponse, referencePointResponse, mapResponse] = await Promise.all([
@@ -140,7 +150,7 @@ function App() {
     setExpandedTrackId(null);
     setCheckedSectorIds([]);
   };
-  useEffect(() => { setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => { if (editor) setInvalidSectorIds(editor.getInvalidSectorIds()); }, [editor, sectors]);
   useEffect(() => {
@@ -226,7 +236,7 @@ function App() {
     if (investigationDraft.startsAt && investigationDraft.endsAt && investigationDraft.endsAt < investigationDraft.startsAt) return setError('Sluttiden måste vara efter starttiden.');
     setInvestigationSaving(true); setError('');
     try {
-      const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: investigationDraft.name.trim(), description: investigationDraft.description || null, startsAt: investigationDraft.startsAt ? new Date(investigationDraft.startsAt).toISOString() : null, endsAt: investigationDraft.endsAt ? new Date(investigationDraft.endsAt).toISOString() : null, searchConditions: investigationDraft.searchConditions || null }) });
+      const response = await fetch(`${API}/investigations/${selected.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: investigationDraft.name.trim(), description: investigationDraft.description || null, startsAt: investigationDraft.startsAt ? new Date(investigationDraft.startsAt).toISOString() : null, endsAt: investigationDraft.endsAt ? new Date(investigationDraft.endsAt).toISOString() : null, searchConditions: investigationDraft.searchConditions || null, isPublic: investigationDraft.isPublic }) });
       if (!response.ok) throw new Error((await response.text()) || 'Kunde inte spara insatsens inställningar.');
       const updated = await response.json() as Investigation;
       setSelected(updated); await load();
@@ -327,6 +337,31 @@ function App() {
     if (selectedSectorId === sector.id) setSelectedSectorId(null);
     if (expandedSectorId === sector.id) setExpandedSectorId(null);
     await loadSelectedData(selected);
+  };
+  const rotateAccessCode = async () => {
+    if (!selected) return;
+    const response = await fetch(`${API}/investigations/${selected.id}/access-code/rotate`, { method: 'POST' });
+    if (!response.ok) { setError((await response.text()) || 'Kunde inte skapa insatskod.'); return; }
+    setAccessCode((await response.json()).code);
+  };
+  const loadInvestigationAdmins = async (investigationId: string) => {
+    const response = await fetch(`${API}/investigations/${investigationId}/admins`);
+    if (response.ok) setInvestigationAdmins(await response.json());
+  };
+  const addInvestigationAdmin = async () => {
+    if (!selected || !adminUsernameToAdd.trim()) return;
+    setAdminAccessError('');
+    const response = await fetch(`${API}/investigations/${selected.id}/admins`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: adminUsernameToAdd.trim() }) });
+    if (!response.ok) { setAdminAccessError((await response.text()) || 'Admin-kontot kunde inte läggas till.'); return; }
+    setAdminUsernameToAdd('');
+    await loadInvestigationAdmins(selected.id);
+  };
+  const removeInvestigationAdmin = async (admin: InvestigationAdmin) => {
+    if (!selected || admin.isOwner) return;
+    if (!window.confirm(`Ta bort ${admin.username} från insatsen?`)) return;
+    const response = await fetch(`${API}/investigations/${selected.id}/admins/${admin.id}`, { method: 'DELETE' });
+    if (!response.ok) { setAdminAccessError((await response.text()) || 'Admin-kontot kunde inte tas bort.'); return; }
+    await loadInvestigationAdmins(selected.id);
   };
   const uploadOwnMap = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -430,6 +465,7 @@ function App() {
 
   if (route.kind === 'not-found') return <RouteNotFound onHome={() => go('/')} />;
   if (route.kind === 'role-picker') return <RolePicker onSelect={role => go(`/${role}`)} />;
+  if (route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); void load(); }} onBack={() => go('/')} />;
   if (!selected) {
     const visibleInvestigations = route.role === 'user' ? investigations.filter(item => ['Planned', 'Active'].includes(item.status)) : investigations;
     return <InvestigationPicker role={route.role} investigations={visibleInvestigations} name={name} error={error} onNameChange={setName} onCreate={() => void createInvestigation()} onSelect={item => selectInvestigation(item, route.role)} onBack={() => go('/')} />;
@@ -437,13 +473,15 @@ function App() {
   if (route.role === 'user') return <UserInvestigationView investigation={selected} onBack={() => go('/user')} />;
 
   return <main className="app-shell">
-    <header><h1>EFP sökledning</h1><span>Administratör</span></header>
+    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span><button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
     {error && <p className="error">{error}</p>}
     <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
     <div className="layout">
       <aside className="investigation-sidebar">
         <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) { setSelected(null); go('/admin'); } }}>← Byt sökinsats</button>
         <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : '💾 Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>↶ Släng ändringar</button>{invalidSectorIdSet.size > 0 && <button className="danger-button invalid-sector-action" onClick={removeInvalidSectors}>⌫ Radera {invalidSectorIdSet.size} ogiltiga sektorer</button>}</section>
+        <section className="sidebar-section access-section"><h3>Anslutning</h3><p className="muted">{selected.isPublic === false ? 'Privat insats – kod krävs.' : 'Publik insats – syns i användarlistan.'}</p><button type="button" onClick={() => void rotateAccessCode()}>{accessCode ? 'Skapa ny kod' : 'Skapa insatskod'}</button>{accessCode && <><strong className="access-code">{accessCode}</strong><small>Koden visas bara efter att den skapats. Gamla användarsessioner är nu ogiltiga.</small><button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}/user/investigations/${selected.id}?code=${accessCode}`)}>Kopiera anslutningslänk</button></>}</section>
+        <details className="sidebar-section collapsible-sidebar-section"><summary>Insatsadmins</summary><div className="collapsible-sidebar-content"><p className="muted">Admins som kan se och hantera denna insats.</p><ul className="admin-members-list">{investigationAdmins.map(admin => <li key={admin.id}><span>{admin.username}{admin.isOwner ? ' (ägare)' : ''}</span>{!admin.isOwner && <button type="button" className="danger-button" onClick={() => void removeInvestigationAdmin(admin)}>Ta bort</button>}</li>)}</ul><div className="admin-member-add"><input value={adminUsernameToAdd} onChange={event => setAdminUsernameToAdd(event.target.value)} placeholder="Befintligt användarnamn" aria-label="Admin-användarnamn" /><button type="button" onClick={() => void addInvestigationAdmin()} disabled={!adminUsernameToAdd.trim()}>Lägg till Admin</button></div>{adminAccessError && <p className="error">{adminAccessError}</p>}</div></details>
         <section className="sidebar-section sectors-section">
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
           {sectorsExpanded && <><input className="sector-search" type="search" value={sectorSearch} onChange={event => setSectorSearch(event.target.value)} placeholder="Sök sektor-namn" aria-label="Sök sektor-namn" />
@@ -496,10 +534,37 @@ function RouteNotFound({ onHome }: { onHome: () => void }) {
   return <main className="selection-screen"><section className="investigation-picker"><h2>Sidan kunde inte hittas</h2><p>Kontrollera länken eller välj ett gränssnitt igen.</p><button onClick={onHome}>Till startsidan</button></section></main>;
 }
 
+function AdminAuthView({ onAuthenticated, onBack }: { onAuthenticated: (identity: { id: string; userName: string; roles: string[] }) => void; onBack: () => void }) {
+  const [registerMode, setRegisterMode] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setError('');
+    const response = await fetch(`${API}/auth/admin/${registerMode ? 'register' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    if (!response.ok) { setError((await response.text()) || 'Autentiseringen misslyckades.'); return; }
+    if (registerMode) { setRegisterMode(false); setError('Kontot skapades. Logga in för att fortsätta.'); return; }
+    onAuthenticated(await response.json());
+  };
+  return <main className="selection-screen"><section className="investigation-picker auth-panel"><button className="selection-back" onClick={onBack}>← Till startsidan</button><h2>{registerMode ? 'Registrera Admin' : 'Logga in som Admin'}</h2><form onSubmit={event => void submit(event)}><label>Användarnamn<input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" required /></label><label>Lösenord<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registerMode ? 'new-password' : 'current-password'} required /></label>{error && <p className="error">{error}</p>}<button type="submit">{registerMode ? 'Registrera' : 'Logga in'}</button></form><button className="secondary-action" onClick={() => { setRegisterMode(current => !current); setError(''); }}>{registerMode ? 'Jag har redan ett konto' : 'Registrera nytt Admin-konto'}</button></section></main>;
+}
+
 type UploadItem = { id: string; file: File; status: 'queued' | 'uploading' | 'success' | 'error'; message?: string; trackId?: string };
 type UploadedTrack = { id: string; sourceFile?: string; callsign: string; assignedGroup?: string; sectorId?: string; notes?: string; pod?: number | null; importedAt?: string; pointCount?: number };
+type UserConnection = { token: string; callsign: string; investigationId: string };
+
+function UserConnectView({ investigation, code, callsign, error, onCodeChange, onCallsignChange, onSubmit, onBack }: { investigation: Investigation; code: string; callsign: string; error: string; onCodeChange: (value: string) => void; onCallsignChange: (value: string) => void; onSubmit: (event: React.FormEvent) => void; onBack: () => void }) {
+  const requiresCode = investigation.isPublic === false;
+  return <main className="user-shell"><section className="user-panel auth-panel"><button className="back-button" onClick={onBack}>← Byt sökinsats</button><h2>Anslut till {investigation.name}</h2><p className="muted">Ange anropsnamn för att fortsätta. Anropsnamnet sparas tillsammans med uppladdade spår.</p><form onSubmit={onSubmit}><label>Anropsnamn<input value={callsign} onChange={event => onCallsignChange(event.target.value)} placeholder="Exempel: Alfa 1" required /></label>{(requiresCode || code) && <label>Insatskod<input value={code} onChange={event => onCodeChange(event.target.value.toUpperCase())} placeholder="Åtta tecken" minLength={8} maxLength={8} required={requiresCode} /></label>}{error && <p className="error">{error}</p>}<button type="submit">Anslut</button></form></section></main>;
+}
 
 function UserInvestigationView({ investigation, onBack }: { investigation: Investigation; onBack: () => void }) {
+  const connectionKey = `efp.userConnection:${investigation.id}`;
+  const [connection, setConnection] = useState<UserConnection | null>(null);
+  const [connectionChecked, setConnectionChecked] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
+  const [connectionCode, setConnectionCode] = useState(new URLSearchParams(window.location.search).get('code') ?? '');
+  const [connectionCallsign, setConnectionCallsign] = useState('');
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
   const [callsign, setCallsign] = useState('');
@@ -512,27 +577,48 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const [uploadHistory, setUploadHistory] = useState<UploadedTrack[]>([]);
   const [uploading, setUploading] = useState(false);
   useEffect(() => {
-    let cancelled = false;
-    void fetch(`${API}/investigations/${investigation.id}/sectors`).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
-    return () => { cancelled = true; };
-  }, [investigation.id]);
+    const stored = localStorage.getItem(connectionKey);
+    if (!stored) { setConnectionChecked(true); return; }
+    try {
+      const parsed = JSON.parse(stored) as UserConnection;
+      void fetch(`${API}/auth/user/session`, { headers: { Authorization: `Bearer ${parsed.token}` } }).then(response => response.ok ? response.json() : null).then(session => {
+        if (session) { setConnection({ ...parsed, callsign: session.callsign }); setConnectionCallsign(session.callsign); } else localStorage.removeItem(connectionKey);
+        setConnectionChecked(true);
+      }).catch(() => { localStorage.removeItem(connectionKey); setConnectionChecked(true); });
+    } catch { localStorage.removeItem(connectionKey); setConnectionChecked(true); }
+  }, [connectionKey]);
+  const connect = async (event: React.FormEvent) => {
+    event.preventDefault(); setConnectionError('');
+    const response = await fetch(`${API}/auth/user/connect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ investigationId: investigation.id, code: connectionCode.trim() || null, callsign: connectionCallsign.trim() }) });
+    if (!response.ok) { setConnectionError((await response.text()) || 'Anslutningen misslyckades.'); return; }
+    const result = await response.json() as UserConnection;
+    const next = { token: result.token, callsign: result.callsign, investigationId: investigation.id };
+    localStorage.setItem(connectionKey, JSON.stringify(next)); setConnection(next);
+  };
+  const disconnect = () => { localStorage.removeItem(connectionKey); setConnection(null); };
   useEffect(() => {
-    if (!callsign.trim()) { setUploadHistory([]); return; }
+    if (!connection) return;
     let cancelled = false;
-    void fetch(`${API}/investigations/${investigation.id}/tracks?callsign=${encodeURIComponent(callsign.trim())}`)
+    void fetch(`${API}/investigations/${investigation.id}/sectors`, { headers: { Authorization: `Bearer ${connection.token}` } }).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
+    return () => { cancelled = true; };
+  }, [investigation.id, connection]);
+  useEffect(() => {
+    if (!connection?.callsign) { setUploadHistory([]); return; }
+    let cancelled = false;
+    void fetch(`${API}/investigations/${investigation.id}/tracks?callsign=${encodeURIComponent(connection.callsign)}`, { headers: { Authorization: `Bearer ${connection.token}` } })
       .then(response => response.ok ? response.json() : [])
       .then(data => { if (!cancelled) setUploadHistory(data); })
       .catch(() => { if (!cancelled) setUploadHistory([]); });
     return () => { cancelled = true; };
-  }, [investigation.id, callsign]);
+  }, [investigation.id, connection]);
   const updateUploadItem = (id: string, patch: Partial<UploadItem>) => setUploadItems(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
   const uploadOne = async (item: UploadItem) => {
-    if (!callsign.trim()) { updateUploadItem(item.id, { status: 'error', message: 'Anropsnamn måste anges.' }); return; }
+    if (!connection?.callsign) { updateUploadItem(item.id, { status: 'error', message: 'Anropsnamn måste anges.' }); return; }
     updateUploadItem(item.id, { status: 'uploading', message: undefined }); setUploading(true);
     try {
-      const form = new FormData(); form.append('file', item.file); form.append('callsign', callsign.trim());
+      const form = new FormData(); form.append('file', item.file); form.append('callsign', connection.callsign);
       if (pod) form.append('pod', pod); if (assignedGroup.trim()) form.append('assignedGroup', assignedGroup.trim()); if (sectorId) form.append('sectorId', sectorId); if (notes.trim()) form.append('notes', notes.trim());
-      const response = await fetch(`${API}/investigations/${investigation.id}/tracks/import`, { method: 'POST', body: form });
+      const response = await fetch(`${API}/investigations/${investigation.id}/tracks/import`, { method: 'POST', headers: { Authorization: `Bearer ${connection?.token ?? ''}` }, body: form });
       if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
       const result = await response.json();
       updateUploadItem(item.id, { status: 'success', trackId: result.id, message: 'Uppladdad.' });
@@ -543,7 +629,7 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   };
   const uploadTracks = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length === 0) return;
-    if (!callsign.trim()) { setUploadMessage('Anropsnamn måste anges innan spår laddas upp.'); return; }
+    if (!connection?.callsign) { setUploadMessage('Anropsnamn måste anges innan spår laddas upp.'); return; }
     const items: UploadItem[] = [];
     for (const file of files) { const validation = await validateTrackFile(file); items.push({ id: `${file.name}-${file.lastModified}-${Math.random()}`, file, status: validation.valid ? 'queued' : 'error', message: validation.valid ? undefined : validation.message }); }
     setUploadItems(items); setUploadMessage('');
@@ -554,10 +640,12 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const toggleAllSectors = () => setSelectedSectorIds(allSectorsSelected ? [] : allSectorIds);
   const toggleSector = (sectorId: string) => setSelectedSectorIds(current => current.includes(sectorId) ? current.filter(id => id !== sectorId) : [...current, sectorId]);
   const exportSelection: ExportSelection = { sectorIds: selectedSectorIds };
+  if (!connectionChecked) return <main className="user-shell"><section className="user-panel"><p>Laddar anslutning…</p></section></main>;
+  if (!connection) return <UserConnectView investigation={investigation} code={connectionCode} callsign={connectionCallsign} error={connectionError} onCodeChange={setConnectionCode} onCallsignChange={setConnectionCallsign} onSubmit={connect} onBack={onBack} />;
   return <main className="user-shell">
     <header><h1>EFP sökledning</h1><span>Användarläge</span></header>
     <section className="user-panel">
-      <button className="back-button" onClick={onBack}>← Byt sökinsats</button>
+      <button className="back-button" onClick={onBack}>← Byt sökinsats</button><button type="button" className="secondary-action" onClick={disconnect}>Koppla från insats</button>
       <h2>{investigation.name}</h2>
       <p className="muted">{investigation.description || 'Planerade och aktiva sektorer för extern GPS-användning.'}</p>
       <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={format.label} href={selectedSectorIds.length === 0 ? undefined : format.sectors(API, investigation.id, exportSelection)} onClick={event => { if (selectedSectorIds.length === 0) event.preventDefault(); }}>{format.label}</a>)}</div>{sectors.length > 0 && <p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p>}</section>
@@ -605,7 +693,7 @@ function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIds
   </details>;
 }
 
-type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string; searchConditions: string };
+type InvestigationDraft = { name: string; description: string; startsAt: string; endsAt: string; searchConditions: string; isPublic: boolean };
 
 function InvestigationInlineSettingsV2({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {
   const [target, setTarget] = useState<HTMLElement | null>(null);
@@ -618,7 +706,7 @@ function InvestigationInlineSettingsV2({ investigation, draft, saving, onDraftCh
   const update = (changes: Partial<InvestigationDraft>) => onDraftChange(current => ({ ...current, ...changes }));
   const viewField = (label: string, value: string, className = '') => <div className={`stacked-setting ${className}`}><span className="stacked-setting-label">{label}</span><span className="stacked-setting-value">{value || 'Inte angivet'}</span></div>;
   if (!target) return null;
-  return createPortal(<><section className="sidebar-section investigation-settings-v2"><h3>Insats <InvestigationEditButton editing={editing} onClick={beginEditing} /></h3>{editing ? <><label className="stacked-setting">Namn<input autoFocus value={draft.name} onChange={event => update({ name: event.target.value })} /></label><label className="stacked-setting">Status<select value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select></label><label className="stacked-setting">Beskrivning<textarea value={draft.description} onChange={event => update({ description: event.target.value })} rows={3} /></label><label className="stacked-setting">Starttid<input type="datetime-local" value={draft.startsAt} onChange={event => update({ startsAt: event.target.value })} /></label><label className="stacked-setting">Sluttid<input type="datetime-local" value={draft.endsAt} onChange={event => update({ endsAt: event.target.value })} /></label><label className="stacked-setting">Sökförutsättningar<textarea value={draft.searchConditions} onChange={event => update({ searchConditions: event.target.value })} rows={4} /></label><div className="inline-edit-actions"><button type="button" onClick={save} disabled={saving}>Spara</button><button type="button" className="cancel-inline-edit" onClick={cancel}>Avbryt</button></div></> : <>{viewField('Namn', draft.name, 'investigation-name')}{viewField('Status', investigationStatusLabel(investigation.status))}{viewField('Beskrivning', draft.description, 'investigation-description')}{viewField('Starttid', formatDateTime(draft.startsAt))}{viewField('Sluttid', formatDateTime(draft.endsAt))}{viewField('Sökförutsättningar', draft.searchConditions, 'investigation-description')}</>}</section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>🗄 Arkivera sökinsats</button>}</>, target);
+  return createPortal(<><section className="sidebar-section investigation-settings-v2"><h3>Insats <InvestigationEditButton editing={editing} onClick={beginEditing} /></h3>{editing ? <><label className="stacked-setting">Namn<input autoFocus value={draft.name} onChange={event => update({ name: event.target.value })} /></label><label className="stacked-setting">Status<select value={investigation.status} onChange={event => onStatusChange(event.target.value)}><option value="Planned">Planerad</option><option value="Active">Aktiv</option><option value="Paused">Pausad</option><option value="Closed">Avslutad</option><option value="Archived">Arkiverad</option></select></label><label className="stacked-setting">Synlighet<select value={draft.isPublic ? 'public' : 'private'} onChange={event => update({ isPublic: event.target.value === 'public' })}><option value="public">Publik</option><option value="private">Privat</option></select></label><label className="stacked-setting">Beskrivning<textarea value={draft.description} onChange={event => update({ description: event.target.value })} rows={3} /></label><label className="stacked-setting">Starttid<input type="datetime-local" value={draft.startsAt} onChange={event => update({ startsAt: event.target.value })} /></label><label className="stacked-setting">Sluttid<input type="datetime-local" value={draft.endsAt} onChange={event => update({ endsAt: event.target.value })} /></label><label className="stacked-setting">Sökförutsättningar<textarea value={draft.searchConditions} onChange={event => update({ searchConditions: event.target.value })} rows={4} /></label><div className="inline-edit-actions"><button type="button" onClick={save} disabled={saving}>Spara</button><button type="button" className="cancel-inline-edit" onClick={cancel}>Avbryt</button></div></> : <>{viewField('Namn', draft.name, 'investigation-name')}{viewField('Status', investigationStatusLabel(investigation.status))}{viewField('Synlighet', draft.isPublic ? 'Publik' : 'Privat')}{viewField('Beskrivning', draft.description, 'investigation-description')}{viewField('Starttid', formatDateTime(draft.startsAt))}{viewField('Sluttid', formatDateTime(draft.endsAt))}{viewField('Sökförutsättningar', draft.searchConditions, 'investigation-description')}</>}</section>{investigation.status !== 'Archived' && <button className="discard-button archive-investigation" onClick={() => onStatusChange('Archived')} disabled={saving}>🗄 Arkivera sökinsats</button>}</>, target);
 }
 
 function InvestigationInlineSettings({ investigation, draft, saving, onDraftChange, onSave, onStatusChange }: { investigation: Investigation; draft: InvestigationDraft; saving: boolean; onDraftChange: React.Dispatch<React.SetStateAction<InvestigationDraft>>; onSave: () => void; onStatusChange: (status: string) => void }) {

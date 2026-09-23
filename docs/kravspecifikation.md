@@ -19,6 +19,8 @@ Applikationen ska kunna stödja flera sökmetoder, däribland patrullsök, skall
 
 ## 1.1 Webbroller och URL-navigering
 
+Systemet har rollerna Superadmin, Admin och Användare. Superadmin bootstrapas av driftansvarig, Admin registrerar sig med användarnamn/lösenord och Användare ansluter utan konto med QR-/insatskod och anropsnamn. Publika planerade och aktiva insatser visas i användarläget; privata insatser kräver kod eller QR-länk.
+
 När webbappen öppnas ska användaren först kunna välja administratörsläge eller användarläge.
 
 Administratörsläget ska använda URL-sökvägarna `/admin` och `/admin/investigations/{id}`. Användarläget ska använda `/user` och `/user/investigations/{id}`.
