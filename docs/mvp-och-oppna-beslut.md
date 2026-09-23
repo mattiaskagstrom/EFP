@@ -7,13 +7,15 @@ En första version bör fokusera på ett komplett men avgränsat arbetsflöde:
 1. Administratören skapar en sökinsats i webbgränssnittet.
 2. Administratören skapar sektorer på karta.
 3. Systemet skapar QR-kod och kort anslutningskod.
-4. Deltagaren ansluter via mobilappen.
-5. Appen visar karta och sektorer.
-6. Användaren spelar in GPS-spår offline.
-7. Användaren lägger till punkter med metadata.
-8. Användaren synkroniserar manuellt.
+4. Deltagaren ansluter via mobil webb/PWA eller native mobilapp.
+5. Den mobila webbdelen visar och låter deltagaren ladda ner behöriga sektorer.
+6. Deltagaren kan ladda upp spår från en extern GPS-app eller GPS-enhet med metadata.
+7. Native-appen kan spela in GPS-spår och lägga till punkter offline.
+8. Deltagaren synkroniserar eller laddar upp data manuellt.
 9. Administratören ser spår och punkter på karta.
-10. Systemet importerar och exporterar GPX.
+10. Systemet importerar och exporterar GPX samt övriga stödda format.
+
+Den mobila webb/PWA-delen är ett separat, enklare arbetsflöde för användare som redan använder annan GPS-utrustning. GPS-inspelning i webbläsaren ingår inte i första versionen.
 
 ## 2. Funktioner efter MVP
 

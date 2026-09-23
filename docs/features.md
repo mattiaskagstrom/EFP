@@ -1,7 +1,7 @@
 # Featurelista
 
 **Status:** Arbetsunderlag  
-**Senast uppdaterad:** 2026-09-21
+**Senast uppdaterad:** 2026-09-23
 
 Den här listan beskriver funktioner som är synliga för administratörer och användare. Tekniska krav, drift, API:er och interna implementationer ingår inte. En markerad ruta betyder att funktionen finns i den nuvarande MVP:n; en omarkerad ruta betyder att den är planerad eller ännu inte verifierad som färdig.
 
@@ -161,6 +161,45 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [ ] Se vilka personer som är aktiva i insatsen.
 - [ ] Se och hantera tilldelade arbetspass.
 - [ ] Rapportera byte, frånvaro eller annan ändring i schemat.
+
+## Mobil webb/PWA – användare med extern GPS
+
+Den mobila webbdelen är ett enklare komplement för användare som spelar in spår i andra GPS-appar eller GPS-enheter. Den spelar inte själv in GPS-spår i första versionen.
+
+### Anslutning och insatsinformation
+
+- [ ] Öppna den mobilanpassade webbappen.
+- [ ] Installera webbappen som PWA på mobilens hemskärm.
+- [ ] Ansluta till en sökinsats genom att skanna en QR-kod.
+- [ ] Ansluta genom att skriva in en kort anslutningskod.
+- [ ] Ange anropsnamn vid anslutning.
+- [ ] Välja sökinsats efter anslutning.
+- [ ] Se aktuell sökinsats och användarens behöriga sektorer.
+- [ ] Endast se tilldelade eller publicerade sektorer samt egna uppladdningar.
+
+### Sektorer och filutbyte
+
+- [ ] Ladda ner behöriga sektorer från sökinsatsen.
+- [ ] Välja bland samma exportformat som admin-gränssnittet stödjer.
+- [ ] Se sektorernas namn, status och relevanta instruktioner.
+
+### Uppladdning av externa spår
+
+- [ ] Välja en eller flera spårfiler från en extern GPS-app eller GPS-enhet.
+- [ ] Ange metadata för uppladdningen, exempelvis POD, patrull/grupp, anropsnamn, sektor och anteckning.
+- [ ] Validera spårfiler innan uppladdning.
+- [ ] Visa tydlig status för lyckade och misslyckade uppladdningar.
+- [ ] Kunna försöka ladda upp en misslyckad fil igen.
+- [ ] Visa historik över egna uppladdningar.
+- [ ] Behålla originalspårets geometri efter uppladdning.
+
+### Avgränsning i första versionen
+
+- [ ] Inte spela in GPS-spår i webbläsaren.
+- [ ] Inte kräva fullständigt användarkonto.
+- [ ] Inte ge åtkomst till andra deltagares spår.
+- [ ] Börja med onlinebaserat filutbyte.
+- [ ] Förbereda för framtida PWA-cache och köade uppladdningar utan uppkoppling.
 
 ## Gemensamma framtida funktioner
 

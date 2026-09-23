@@ -11,8 +11,9 @@ Applikationen ska stödja planering, genomförande och uppföljning av sökinsat
 Systemet ska bestå av:
 
 1. Mobilapplikation för Android och iOS.
-2. Webbaserat administrationsgränssnitt.
-3. Backend/server för lagring och synkronisering.
+2. Mobilanpassad webbdel/PWA för användare med externa GPS-appar eller GPS-enheter.
+3. Webbaserat administrationsgränssnitt.
+4. Backend/server för lagring och synkronisering.
 
 Applikationen ska kunna stödja flera sökmetoder, däribland patrullsök, skallgångssök och ledstångssök. Begrepp och förkortningar för MSO dokumenteras i [Sökmetoder och MSO-begrepp](sokmetoder-och-mso.md).
 
@@ -43,6 +44,21 @@ Ska kunna:
 - importera och exportera GPX
 - välja tillgängliga kartlager
 - hantera deltagare och behörigheter
+
+### Mobil webbdeltagare
+
+Ska kunna:
+
+- ansluta till en sökinsats med QR-kod eller kort insatskod
+- ange anropsnamn
+- välja eller bekräfta sökinsats
+- se tilldelade eller publicerade sektorer
+- ladda ner sektorer i tillgängliga exportformat
+- ladda upp spårfiler från externa GPS-appar eller GPS-enheter
+- ange metadata på uppladdade spår, exempelvis POD, patrull/grupp, anropsnamn och sektor
+- se status och historik för egna uppladdningar
+
+Den mobila webbdeltagaren ska inte spela in GPS-spår i webbläsaren i första versionen och ska inte se andra deltagares spår.
 
 ## 3. Mobilapplikation
 
@@ -112,6 +128,34 @@ Mobilappen ska kunna visa:
 - vilka sektorer som är färdiga, pågående eller ej påbörjade
 
 Sektorer ska kunna beskrivas med sökmetod, segmentidentitet, prioritet, tilldelad resurs och eventuella instruktioner.
+
+## 3.1 Mobil webbdel/PWA för extern GPS
+
+Den mobila webbdelen ska vara ett enklare komplement till native-appen för användare som registrerar spår i andra GPS-appar eller GPS-enheter.
+
+### Anslutning
+
+Användaren ska kunna ansluta med sökinsatsens QR-kod eller korta insatskod. Anropsnamn ska anges vid anslutning. Sessionen ska vara begränsad till aktuell sökinsats och ska kunna tidsbegränsas eller återkallas av administratören.
+
+### Sektorer
+
+Användaren ska kunna välja sökinsats och ladda ner sektorer som användaren har behörighet till. Samma exportformat som stöds av admin-gränssnittet ska vara tillgängliga, inklusive GPX, Garmin-anpassad GPX och GeoJSON där formatet är relevant.
+
+### Externa spår
+
+Användaren ska kunna välja en eller flera spårfiler och ladda upp dem tillsammans med metadata, exempelvis:
+
+- POD
+- patrull eller grupp
+- anropsnamn
+- vald sektor
+- sökmetod
+- start- och sluttid när tillgängligt
+- anteckning
+
+Originalfilens spårgeometri ska bevaras. Uppladdningen ska valideras och visa tydlig status samt kunna återförsökas vid fel.
+
+Första versionen ska vara onlinebaserad. Framtida PWA-cache och köade uppladdningar ska kunna införas utan att ändra användarflödet.
 
 ## 4. Kartor
 

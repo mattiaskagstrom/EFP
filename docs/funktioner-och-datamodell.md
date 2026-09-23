@@ -26,6 +26,21 @@
 3. Administratören filtrerar på sektor, tid, patrull eller status.
 4. Underlaget exporteras eller arkiveras vid behov.
 
+### Använda mobil webbdel med extern GPS
+
+1. Deltagaren öppnar den mobilanpassade webbappen.
+2. Deltagaren skannar QR-kod eller anger insatskod.
+3. Deltagaren anger anropsnamn och får en insatsbegränsad session.
+4. Deltagaren väljer eller bekräftar sökinsats.
+5. Webbdelen hämtar tilldelade eller publicerade sektorer.
+6. Deltagaren laddar ner sektorer i önskat format.
+7. Deltagaren väljer spårfiler från en extern GPS-app eller GPS-enhet.
+8. Deltagaren anger metadata, exempelvis POD, patrull/grupp och sektor.
+9. Webbdelen validerar och laddar upp spåret.
+10. Deltagaren ser uppladdningens status och historik.
+
+Detta flöde spelar inte in GPS i webbläsaren. Det är ett onlinebaserat filutbyte i första versionen, men ska senare kunna kompletteras med PWA-cache och köade uppladdningar.
+
 ## 2. Centrala informationsobjekt
 
 ### Sökinsats
@@ -50,6 +65,16 @@
 - `senast aktiv`
 - `senast synkad`
 
+### Mobil insatssession
+
+- `id`
+- `sökinsats`
+- `anropsnamn`
+- `skapad`
+- `giltig till`
+- `återkallad`
+- `senast aktiv`
+
 ### Spår
 
 - `id`
@@ -63,6 +88,10 @@
 - `GPS-noggrannhet`
 - `metadata`
 - `synkroniseringsstatus`
+- `ursprunglig fil`
+- `POD`
+- `söksektor`
+- `uppladdningsstatus`
 
 ### Punkt
 
