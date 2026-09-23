@@ -37,6 +37,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(paths.TryGetProperty("/api/v1/auth/admin/login", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/user/connect", out _));
         Assert.True(paths.TryGetProperty("/api/v1/admin/user-sessions", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/admin/system", out _));
     }
 
     [Fact]
@@ -136,6 +137,17 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var created = await valid.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(18, created.GetProperty("longitude").GetDouble());
         Assert.Equal(59, created.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task Superadmin_system_overview_returns_statistics_and_safe_parameters()
+    {
+        var response = await client.GetAsync("/api/v1/admin/system");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("statistics").GetProperty("investigations").TryGetInt32(out _));
+        Assert.True(body.GetProperty("parameters").TryGetProperty("apiVersion", out _));
+        Assert.False(body.ToString().Contains("Password", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

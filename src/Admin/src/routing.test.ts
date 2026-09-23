@@ -8,6 +8,10 @@ describe('application routes', () => {
     expect(parseRoute('/user')).toEqual({ kind: 'investigation-list', role: 'user' });
   });
 
+  it('parses the superadmin system page', () => {
+    expect(parseRoute('/admin/system')).toEqual({ kind: 'superadmin-system' });
+  });
+
   it('parses direct investigation links', () => {
     expect(parseRoute('/user/investigations/abc-123')).toEqual({ kind: 'investigation', role: 'user', id: 'abc-123' });
     expect(parseRoute('/admin/investigations/a%2Fb')).toEqual({ kind: 'investigation', role: 'admin', id: 'a/b' });

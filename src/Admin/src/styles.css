@@ -67,6 +67,24 @@ aside button { display: block; width: 100%; margin: .4rem 0; text-align: left; }
 .admin-member-add { display: flex; align-items: center; gap: 6px; }
 .admin-member-add input { flex: 1 1 8rem; min-width: 0; width: 8rem; padding: .4rem .5rem; }
 .admin-member-add button { flex: 0 0 auto; width: auto; margin: 0; padding: .4rem .55rem; white-space: nowrap; }
+.system-screen { background: #f7f9fc; }
+.system-panel { width: min(62rem, calc(100% - 2rem)); margin: 2rem auto; padding: 1.25rem; background: white; border: 1px solid #dbe1ea; border-radius: .6rem; }
+.system-panel h2 { margin-top: 0; }
+.system-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #dbe1ea; }
+.system-section h3 { margin-top: 0; }
+.system-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .65rem; }
+.system-stat-grid div { display: grid; gap: .15rem; padding: .8rem; border: 1px solid #dbe1ea; border-radius: .4rem; background: #f8fafc; }
+.system-stat-grid strong { font-size: 1.35rem; }
+.system-stat-grid span, .system-row small { color: #536176; font-size: .8rem; }
+.system-parameters { display: grid; gap: .45rem; margin: 0; }
+.system-parameters div { display: grid; grid-template-columns: minmax(10rem, 14rem) 1fr; gap: .75rem; padding: .45rem 0; border-bottom: 1px solid #edf0f5; }
+.system-parameters dt { color: #536176; font-weight: 600; }
+.system-parameters dd { margin: 0; overflow-wrap: anywhere; }
+.system-table { display: grid; gap: .45rem; }
+.system-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .65rem; border: 1px solid #dbe1ea; border-radius: .35rem; background: #f8fafc; }
+.system-row span { display: grid; gap: .15rem; min-width: 0; }
+.system-row button { width: auto; margin: 0; white-space: nowrap; }
+.protected-account { color: #536176; font-size: .8rem; font-style: italic; }
 .collapsible-sidebar-section { display: block; }
 .collapsible-sidebar-section > summary { display: flex; align-items: center; cursor: pointer; font-size: .9rem; font-weight: 700; list-style: none; }
 .collapsible-sidebar-section > summary::-webkit-details-marker { display: none; }

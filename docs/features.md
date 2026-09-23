@@ -44,7 +44,10 @@ Den här listan beskriver funktioner som är synliga för administratörer och a
 - [x] Se alla insatser oavsett ägare.
 - [x] Lista och återkalla användarsessioner via API.
 - [x] Lista och aktivera/inaktivera Admin-konton via API.
-- [ ] Administrera Admin-konton i färdig webbvy.
+- [x] Administrera Admin-konton i Superadmin-vy.
+- [x] Visa Superadmin-systemöversikt med Admin-konton, statistik och systemparametrar.
+- [x] Aktivera och inaktivera Admin-konton från systemöversikten.
+- [x] Lista och återkalla aktiva användarsessioner från systemöversikten.
 
 ### Karta och kartunderlag
 

@@ -4,6 +4,7 @@ export type AppRoute =
   | { kind: 'role-picker' }
   | { kind: 'investigation-list'; role: AppRole }
   | { kind: 'investigation'; role: AppRole; id: string }
+  | { kind: 'superadmin-system' }
   | { kind: 'not-found' };
 
 const cleanPath = (pathname: string) => {
@@ -16,6 +17,7 @@ export function parseRoute(pathname: string): AppRoute {
   if (path === '/') return { kind: 'role-picker' };
   if (path === '/admin') return { kind: 'investigation-list', role: 'admin' };
   if (path === '/user') return { kind: 'investigation-list', role: 'user' };
+  if (path === '/admin/system') return { kind: 'superadmin-system' };
 
   const match = path.match(/^\/(admin|user)\/investigations\/([^/]+)$/);
   if (match) return { kind: 'investigation', role: match[1] as AppRole, id: decodeURIComponent(match[2]) };

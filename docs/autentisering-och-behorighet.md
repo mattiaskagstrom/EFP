@@ -18,7 +18,8 @@ Publika planerade och aktiva insatser listas i användarläget och kräver fortf
 
 Adminflödet finns under `/api/v1/auth/admin` och användaranslutning under `/api/v1/auth/user`. Alla dataskrivande adminendpoints kräver Admin eller Superadmin. En användarsession får endast läsa och ladda upp data för den insats som sessionen avser.
 
+Superadmin-systemöversikten finns i webbappen på `/admin/system`. Den visar endast icke-känsliga systemparametrar, statistik, Admin-konton och aktiva användarsessioner. Lösenord, råa insatskoder och tokens exponeras inte.
+
 ## GDPR
 
 Användarläget samlar inte in riktiga namn, e-post eller telefonnummer. Anropsnamn är ändå insatsrelaterade uppgifter och kan bli personuppgift om de kan kopplas till en person. Se [GDPR och dataminimering](gdpr-och-dataminimering.md).
-

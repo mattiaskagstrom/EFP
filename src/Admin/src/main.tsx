@@ -96,7 +96,7 @@ function App() {
   useEffect(() => {
     void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(identity); setAuthChecked(true); }).catch(() => setAuthChecked(true));
   }, []);
-  useEffect(() => { if (authChecked && (route.kind !== 'investigation-list' || route.role !== 'admin' || adminIdentity)) void load(); }, [authChecked, route.kind, route.kind === 'role-picker' || route.kind === 'not-found' ? undefined : route.role, adminIdentity]);
+  useEffect(() => { if (authChecked && (route.kind !== 'investigation-list' || route.role !== 'admin' || adminIdentity)) void load(); }, [authChecked, route.kind, 'role' in route ? route.role : undefined, adminIdentity]);
   useEffect(() => {
     const onPopState = () => setRoute(parseRoute(window.location.pathname));
     window.addEventListener('popstate', onPopState);
@@ -465,7 +465,9 @@ function App() {
 
   if (route.kind === 'not-found') return <RouteNotFound onHome={() => go('/')} />;
   if (route.kind === 'role-picker') return <RolePicker onSelect={role => go(`/${role}`)} />;
-  if (route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); void load(); }} onBack={() => go('/')} />;
+  if (route.kind === 'superadmin-system' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); }} onBack={() => go('/')} />;
+  if (route.kind === 'superadmin-system') return <SuperadminSystemView onBack={() => go('/admin')} />;
+  if ('role' in route && route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); void load(); }} onBack={() => go('/')} />;
   if (!selected) {
     const visibleInvestigations = route.role === 'user' ? investigations.filter(item => ['Planned', 'Active'].includes(item.status)) : investigations;
     return <InvestigationPicker role={route.role} investigations={visibleInvestigations} name={name} error={error} onNameChange={setName} onCreate={() => void createInvestigation()} onSelect={item => selectInvestigation(item, route.role)} onBack={() => go('/')} />;
@@ -473,7 +475,7 @@ function App() {
   if (route.role === 'user') return <UserInvestigationView investigation={selected} onBack={() => go('/user')} />;
 
   return <main className="app-shell">
-    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span><button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
+    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span>{adminIdentity?.roles.includes('Superadmin') && <button className="header-action" onClick={() => go('/admin/system')}>Systemöversikt</button>}<button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
     {error && <p className="error">{error}</p>}
     <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
     <div className="layout">
@@ -533,6 +535,37 @@ function InvestigationPicker({ role, investigations, name, error, onNameChange, 
 function RouteNotFound({ onHome }: { onHome: () => void }) {
   return <main className="selection-screen"><section className="investigation-picker"><h2>Sidan kunde inte hittas</h2><p>Kontrollera länken eller välj ett gränssnitt igen.</p><button onClick={onHome}>Till startsidan</button></section></main>;
 }
+
+type SystemOverview = { statistics: Record<string, number>; parameters: Record<string, unknown>; generatedAt: string };
+type SystemAdmin = { id: string; userName: string; isActive: boolean; createdAt: string; isSuperadmin: boolean };
+type SystemSession = { id: string; investigationId: string; callsign: string; createdAt: string; lastSeenAt: string; accessCodeVersion: number };
+
+function SuperadminSystemView({ onBack }: { onBack: () => void }) {
+  const [overview, setOverview] = useState<SystemOverview | null>(null);
+  const [admins, setAdmins] = useState<SystemAdmin[]>([]);
+  const [sessions, setSessions] = useState<SystemSession[]>([]);
+  const [error, setError] = useState('');
+  const load = async () => {
+    const [overviewResponse, adminsResponse, sessionsResponse] = await Promise.all([fetch(`${API}/admin/system`), fetch(`${API}/admin/users`), fetch(`${API}/admin/user-sessions`)]);
+    if (!overviewResponse.ok || !adminsResponse.ok || !sessionsResponse.ok) { setError('Systemöversikten kunde inte laddas.'); return; }
+    setOverview(await overviewResponse.json()); setAdmins(await adminsResponse.json()); setSessions(await sessionsResponse.json());
+  };
+  useEffect(() => { void load(); }, []);
+  const setAdminActive = async (admin: SystemAdmin) => {
+    if (admin.isSuperadmin) return;
+    const response = await fetch(`${API}/admin/users/${admin.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !admin.isActive }) });
+    if (response.ok) await load(); else setError('Admin-kontots status kunde inte ändras.');
+  };
+  const revokeSession = async (session: SystemSession) => {
+    if (!window.confirm(`Återkalla sessionen för ${session.callsign}?`)) return;
+    const response = await fetch(`${API}/admin/user-sessions/${session.id}`, { method: 'DELETE' });
+    if (response.ok) await load(); else setError('Sessionen kunde inte återkallas.');
+  };
+  return <main className="selection-screen system-screen"><header><h1>EFP sökledning</h1><span>Superadmin · Systemöversikt</span></header><section className="system-panel"><button className="selection-back" onClick={onBack}>← Till insatser</button><h2>Systemöversikt</h2>{error && <p className="error">{error}</p>}{overview && <><section className="system-section"><h3>Statistik</h3><div className="system-stat-grid">{Object.entries(overview.statistics).map(([key, value]) => <div key={key}><strong>{value}</strong><span>{systemStatisticLabel(key)}</span></div>)}</div></section><section className="system-section"><h3>Systemparametrar</h3><dl className="system-parameters">{Object.entries(overview.parameters).map(([key, value]) => <div key={key}><dt>{systemParameterLabel(key)}</dt><dd>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section></>}{<section className="system-section"><h3>Admin-konton</h3><div className="system-table">{admins.map(admin => <div className="system-row" key={admin.id}><span><strong>{admin.userName}</strong><small>Skapad {new Date(admin.createdAt).toLocaleString('sv-SE')}</small></span>{admin.isSuperadmin ? <span className="protected-account">Superadmin · skyddat konto</span> : <button onClick={() => void setAdminActive(admin)}>{admin.isActive ? 'Inaktivera' : 'Aktivera'}</button>}</div>)}</div></section>}{<section className="system-section"><h3>Aktiva användarsessioner</h3>{sessions.length === 0 ? <p className="muted">Inga aktiva sessioner.</p> : <div className="system-table">{sessions.map(session => <div className="system-row" key={session.id}><span><strong>{session.callsign}</strong><small>{session.investigationId} · Senast använd {new Date(session.lastSeenAt).toLocaleString('sv-SE')}</small></span><button className="danger-button" onClick={() => void revokeSession(session)}>Återkalla</button></div>)}</div>}</section>}</section></main>;
+}
+
+function systemStatisticLabel(key: string) { return ({ investigations: 'Sökinsatser', activeInvestigations: 'Aktiva insatser', sectors: 'Sektorer', tracks: 'Spår', referencePoints: 'Referenspunkter', activeUserSessions: 'Aktiva användarsessioner', administrators: 'Administratörskonton' } as Record<string, string>)[key] ?? key; }
+function systemParameterLabel(key: string) { return ({ apiVersion: 'API-version', environment: 'Miljö', databaseProvider: 'Databas', authentication: 'Autentisering', userSessionExpiration: 'Sessionens utgång', publicUserAccess: 'Publik åtkomst', configuration: 'Konfiguration' } as Record<string, string>)[key] ?? key; }
 
 function AdminAuthView({ onAuthenticated, onBack }: { onAuthenticated: (identity: { id: string; userName: string; roles: string[] }) => void; onBack: () => void }) {
   const [registerMode, setRegisterMode] = useState(false);

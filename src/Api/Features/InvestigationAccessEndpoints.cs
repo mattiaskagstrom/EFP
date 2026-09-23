@@ -21,6 +21,7 @@ public static class InvestigationAccessEndpoints
         var users = endpoints.MapGroup("/api/v1/admin/users").RequireAuthorization("Superadmin");
         users.MapGet("", ListUsersAsync);
         users.MapPatch("/{userId:guid}", SetUserActiveAsync);
+        endpoints.MapGet("/api/v1/admin/system", GetSystemOverviewAsync).RequireAuthorization("Superadmin");
         return endpoints;
     }
 
@@ -82,8 +83,11 @@ public static class InvestigationAccessEndpoints
 
     private static async Task<IResult> ListUsersAsync(UserManager<ApplicationUser> users)
     {
-        var result = await users.Users.AsNoTracking().OrderBy(x => x.UserName)
+        var accounts = await users.Users.AsNoTracking().OrderBy(x => x.UserName)
             .Select(x => new { x.Id, x.UserName, x.IsActive, x.CreatedAt }).ToListAsync();
+        var result = new List<object>(accounts.Count);
+        foreach (var account in accounts)
+            result.Add(new { account.Id, account.UserName, account.IsActive, account.CreatedAt, IsSuperadmin = await users.IsInRoleAsync(new ApplicationUser { Id = account.Id }, "Superadmin") });
         return Results.Ok(result);
     }
 
@@ -95,6 +99,35 @@ public static class InvestigationAccessEndpoints
         user.IsActive = request.IsActive;
         await users.UpdateAsync(user);
         return Results.Ok(new { user.Id, user.UserName, user.IsActive });
+    }
+
+    private static async Task<IResult> GetSystemOverviewAsync(EfpDbContext db, IConfiguration configuration, IWebHostEnvironment environment, CancellationToken ct)
+    {
+        var statistics = new
+        {
+            investigations = await db.Investigations.CountAsync(ct),
+            activeInvestigations = await db.Investigations.CountAsync(x => x.Status == InvestigationStatus.Active, ct),
+            sectors = await db.Sectors.CountAsync(ct),
+            tracks = await db.Tracks.CountAsync(ct),
+            referencePoints = await db.ReferencePoints.CountAsync(ct),
+            activeUserSessions = await db.UserSessions.CountAsync(x => x.RevokedAt == null, ct),
+            administrators = await db.Users.CountAsync(ct),
+        };
+        var parameters = new
+        {
+            apiVersion = "v1",
+            environment = environment.EnvironmentName,
+            databaseProvider = "PostgreSQL/PostGIS",
+            authentication = "ASP.NET Identity + HttpOnly cookie / bearer user sessions",
+            userSessionExpiration = "none (manual revocation or access-code rotation)",
+            publicUserAccess = "planned and active public investigations",
+            configuration = new
+            {
+                superadminBootstrapConfigured = !string.IsNullOrWhiteSpace(configuration["Superadmin:Username"]),
+                allowedFrontendOrigin = "http://localhost:5173 (development)"
+            }
+        };
+        return Results.Ok(new { statistics, parameters, generatedAt = DateTimeOffset.UtcNow });
     }
 
     internal static async Task<bool> CanManageAsync(Guid investigationId, HttpContext http, EfpDbContext db, CancellationToken ct)
