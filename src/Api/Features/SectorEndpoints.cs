@@ -18,8 +18,9 @@ public static class SectorEndpoints
             var sectors = await db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId).OrderBy(x => x.Priority).ToListAsync(ct);
             return Results.Ok(sectors.Select(ToResponse));
         });
-        group.MapPost("", async (Guid investigationId, SectorRequest request, EfpDbContext db, CancellationToken ct) =>
+        group.MapPost("", async (Guid investigationId, SectorRequest request, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
             if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
             if (request.Geometry is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["geometry"] = ["Geometry is required."] });
             if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
@@ -28,8 +29,9 @@ public static class SectorEndpoints
             db.Sectors.Add(sector); await db.SaveChangesAsync(ct);
             return Results.Created($"/api/v1/investigations/{investigationId}/sectors/{sector.Id}", ToResponse(sector));
         }).RequireAuthorization("Admin");
-        group.MapPut("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, SectorRequest request, EfpDbContext db, CancellationToken ct) =>
+        group.MapPut("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, SectorRequest request, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
             var sector = await db.Sectors.FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
             if (sector is null) return Results.NotFound();
             if (request.Poa is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["poa"] = ["POA måste vara mellan 0 och 100."] });
@@ -37,8 +39,9 @@ public static class SectorEndpoints
             sector.Name = request.Name.Trim(); sector.Instructions = request.Instructions; sector.Status = request.Status; sector.SearchMethod = request.SearchMethod; sector.Priority = request.Priority; sector.AssignedGroup = request.AssignedGroup; sector.Searched = request.Searched; sector.SearchedAt = request.SearchedAt; sector.Points = request.Points; sector.ShowName = request.ShowName; sector.ShowArea = request.ShowArea; sector.Poa = request.Poa; sector.Geometry = geometry; sector.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct); return Results.Ok(ToResponse(sector));
         }).RequireAuthorization("Admin");
-        group.MapDelete("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, EfpDbContext db, CancellationToken ct) =>
+        group.MapDelete("/{sectorId:guid}", async (Guid investigationId, Guid sectorId, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
             var sector = await db.Sectors.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == sectorId && x.InvestigationId == investigationId, ct);
             if (sector is null) return Results.NotFound();
             if (sector.IsDeleted) return Results.NoContent();

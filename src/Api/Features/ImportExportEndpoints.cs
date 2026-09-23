@@ -42,9 +42,7 @@ public static class ImportExportEndpoints
 
     private static async Task<IResult> ImportGpxAsync(Guid investigationId, IFormFile file, [FromForm] string? callsign, [FromForm] double? pod, [FromForm] string? assignedGroup, [FromForm] Guid? sectorId, [FromForm] string? notes, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
-        var isAdmin = http.User.Identity?.IsAuthenticated == true && (http.User.IsInRole("Admin") || http.User.IsInRole("Superadmin"));
-        var userSession = isAdmin ? null : await UserSessionService.FindAsync(http, db, ct);
-        if (!isAdmin && userSession?.InvestigationId != investigationId) return Results.Unauthorized();
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length == 0 || file.Length > 25 * 1024 * 1024) return Results.BadRequest("GPX file must be between 1 byte and 25 MB.");
         if (pod is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["pod"] = ["POD måste vara mellan 0 och 100."] });
@@ -63,16 +61,18 @@ public static class ImportExportEndpoints
         return Results.Created($"/api/v1/investigations/{investigationId}/tracks/{track.Id}", new { track.Id, track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.Pod, PointCount = points.Length });
     }
 
-    private static async Task<IResult> ListTracksAsync(Guid investigationId, [FromQuery] string? callsign, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ListTracksAsync(Guid investigationId, [FromQuery] string? callsign, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         if (!string.IsNullOrWhiteSpace(callsign)) query = query.Where(x => x.Callsign == callsign.Trim());
         var tracks = await query.OrderByDescending(x => x.ImportedAt).Select(x => new { x.Id, x.Callsign, x.SourceFile, x.AssignedGroup, x.SectorId, x.Notes, x.Pod, x.StartedAt, x.EndedAt, x.ImportedAt, PointCount = x.Geometry.NumPoints }).ToListAsync(ct);
         return Results.Ok(tracks);
     }
 
-    private static async Task<IResult> UpdateTrackMetadataAsync(Guid investigationId, Guid trackId, TrackMetadataRequest request, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> UpdateTrackMetadataAsync(Guid investigationId, Guid trackId, TrackMetadataRequest request, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         if (request.Pod is < 0 or > 100) return Results.ValidationProblem(new Dictionary<string, string[]> { ["pod"] = ["POD måste vara mellan 0 och 100."] });
         var track = await db.Tracks.FirstOrDefaultAsync(x => x.Id == trackId && x.InvestigationId == investigationId, ct);
         if (track is null) return Results.NotFound();
@@ -81,8 +81,9 @@ public static class ImportExportEndpoints
         return Results.Ok(new { track.Id, track.Callsign, track.SourceFile, track.AssignedGroup, track.SectorId, track.Notes, track.Pod });
     }
 
-    private static async Task<IResult> ImportSectorsGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ImportSectorsGpxAsync(Guid investigationId, IFormFile file, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length == 0 || file.Length > 25 * 1024 * 1024) return Results.BadRequest("GPX file must be between 1 byte and 25 MB.");
 
@@ -228,8 +229,9 @@ public static class ImportExportEndpoints
         return result.ToArray();
     }
 
-    private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
         var sectors = await query.ToListAsync(ct);
@@ -237,8 +239,9 @@ public static class ImportExportEndpoints
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportSectorsGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
         var sectors = await query.OrderBy(x => x.Priority).ToListAsync(ct);
@@ -252,8 +255,9 @@ public static class ImportExportEndpoints
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportSectorsGarminGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportSectorsGarminGpxAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var query = db.Sectors.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         if (sectorIds is { Length: > 0 }) query = query.Where(x => sectorIds.Contains(x.Id));
         var sectors = await query.OrderBy(x => x.Priority).ToListAsync(ct);
@@ -281,8 +285,9 @@ public static class ImportExportEndpoints
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
 
-    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         query = ApplyTrackFilter(query, trackIds, fromDate, toDate);
@@ -291,8 +296,9 @@ public static class ImportExportEndpoints
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
-    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ExportTracksGpxAsync(Guid investigationId, [FromQuery] Guid[]? trackIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
         var query = db.Tracks.AsNoTracking().Where(x => x.InvestigationId == investigationId);
         query = ApplyTrackFilter(query, trackIds, fromDate, toDate);

@@ -18,15 +18,17 @@ public static class InvestigationMapEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ListAsync(Guid investigationId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ListAsync(Guid investigationId, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (!await db.Investigations.AnyAsync(item => item.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         var maps = await db.InvestigationMaps.AsNoTracking().Where(item => item.InvestigationId == investigationId).OrderBy(item => item.CreatedAt).Select(item => new { item.Id, item.Name, item.ContentType, item.West, item.South, item.East, item.North, ImageUrl = $"/api/v1/investigations/{item.InvestigationId}/maps/{item.Id}/image", item.CreatedAt }).ToListAsync(ct);
         return Results.Ok(maps);
     }
 
-    private static async Task<IResult> UploadAsync(Guid investigationId, IFormFile file, double west, double south, double east, double north, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> UploadAsync(Guid investigationId, IFormFile file, double west, double south, double east, double north, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         if (!await db.Investigations.AnyAsync(item => item.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
         if (file.Length is <= 0 or > 50 * 1024 * 1024) return Results.BadRequest("Kartbilden måste vara mellan 1 byte och 50 MB.");
         if (!AllowedContentTypes.Contains(file.ContentType.ToLowerInvariant())) return Results.BadRequest("Kartbilden måste vara PNG eller JPEG.");
@@ -40,14 +42,16 @@ public static class InvestigationMapEndpoints
         return Results.Created($"/api/v1/investigations/{investigationId}/maps/{map.Id}", ToResponse(map));
     }
 
-    private static async Task<IResult> ImageAsync(Guid investigationId, Guid mapId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> ImageAsync(Guid investigationId, Guid mapId, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         var map = await db.InvestigationMaps.AsNoTracking().FirstOrDefaultAsync(item => item.Id == mapId && item.InvestigationId == investigationId, ct);
         return map is null ? Results.NotFound() : Results.File(map.Data, map.ContentType, enableRangeProcessing: true);
     }
 
-    private static async Task<IResult> DeleteAsync(Guid investigationId, Guid mapId, EfpDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteAsync(Guid investigationId, Guid mapId, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         var map = await db.InvestigationMaps.FirstOrDefaultAsync(item => item.Id == mapId && item.InvestigationId == investigationId, ct);
         if (map is null) return Results.NotFound();
         db.InvestigationMaps.Remove(map);

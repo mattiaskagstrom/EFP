@@ -136,6 +136,13 @@ public static class InvestigationAccessEndpoints
         var userId = http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(userId, out var id) && await db.InvestigationAdmins.AnyAsync(x => x.InvestigationId == investigationId && x.AdminId == id, ct);
     }
+
+    internal static async Task<bool> CanAccessAsync(Guid investigationId, HttpContext http, EfpDbContext db, CancellationToken ct)
+    {
+        if (await CanManageAsync(investigationId, http, db, ct)) return true;
+        var session = await UserSessionService.FindAsync(http, db, ct);
+        return session?.InvestigationId == investigationId;
+    }
 }
 
 public sealed record AddInvestigationAdminRequest(string Username);

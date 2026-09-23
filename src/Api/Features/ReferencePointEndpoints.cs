@@ -17,8 +17,9 @@ public static class ReferencePointEndpoints
             if (!http.User.IsInRole("Admin") && !http.User.IsInRole("Superadmin") && session?.InvestigationId != investigationId) return Results.Unauthorized();
             return Results.Ok((await db.ReferencePoints.AsNoTracking().Where(x => x.InvestigationId == investigationId).ToListAsync(ct)).Select(ToResponse));
         });
-        group.MapPost("", async (Guid investigationId, ReferencePointRequest request, EfpDbContext db, CancellationToken ct) =>
+        group.MapPost("", async (Guid investigationId, ReferencePointRequest request, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
             if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
             if (request.Longitude is < -180 or > 180 || request.Latitude is < -90 or > 90) return Results.ValidationProblem(new Dictionary<string, string[]> { ["coordinates"] = ["Coordinates are invalid."] });
             var point = new ReferencePoint { InvestigationId = investigationId, Type = request.Type, Label = request.Label.Trim(), Geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(request.Longitude, request.Latitude)) };

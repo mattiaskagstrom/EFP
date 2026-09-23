@@ -22,9 +22,9 @@ public static class InvestigationEndpoints
         {
             var item = await db.Investigations.AsNoTracking().Include(x => x.Sectors).Include(x => x.ReferencePoints).FirstOrDefaultAsync(x => x.Id == id, ct);
             if (item is null) return Results.NotFound();
-            var isAdmin = http.User.IsInRole("Superadmin") || await InvestigationAccessEndpoints.CanManageAsync(id, http, db, ct);
-            var userSession = await UserSessionService.FindAsync(http, db, ct);
-            return isAdmin || item.IsPublic || userSession?.InvestigationId == id ? Results.Ok(item) : Results.Unauthorized();
+            var hasInsatsAccess = await InvestigationAccessEndpoints.CanAccessAsync(id, http, db, ct);
+            var isPubliclyVisible = item.IsPublic && item.Status is InvestigationStatus.Planned or InvestigationStatus.Active;
+            return hasInsatsAccess || isPubliclyVisible ? Results.Ok(item) : Results.Unauthorized();
         });
         group.MapPost("", async (CreateInvestigationRequest request, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
@@ -39,6 +39,7 @@ public static class InvestigationEndpoints
         }).RequireAuthorization("Admin");
         group.MapPatch("/{id:guid}", async (Guid id, UpdateInvestigationRequest request, EfpDbContext db, HttpContext http, CancellationToken ct) =>
         {
+            if (!await InvestigationAccessEndpoints.CanManageAsync(id, http, db, ct)) return Results.Forbid();
             var item = await db.Investigations.FindAsync([id], ct);
             if (item is null) return Results.NotFound();
             if (request.Name is not null) item.Name = request.Name.Trim();
