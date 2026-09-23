@@ -54,6 +54,7 @@ function App() {
   const [error, setError] = useState('');
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
   const [expandedSectorId, setExpandedSectorId] = useState<string | null>(null);
+  const [checkedSectorIds, setCheckedSectorIds] = useState<string[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
@@ -128,6 +129,7 @@ function App() {
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
     setSelectedTrackId(null);
     setExpandedTrackId(null);
+    setCheckedSectorIds([]);
   };
   useEffect(() => { setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
@@ -317,6 +319,28 @@ function App() {
     if (expandedSectorId === sector.id) setExpandedSectorId(null);
     await loadSelectedData(selected);
   };
+  const deleteSelectedSectors = async () => {
+    if (!selected) return;
+    const targets = sectors.filter(sector => checkedSectorIds.includes(sector.id));
+    if (targets.length === 0) return;
+    if (!window.confirm(`Är du säker på att du vill radera ${targets.length} valda sektorer?`)) return;
+    setError('');
+    targets.filter(sector => sector.id.startsWith('draft-')).forEach(sector => editor?.removeSector(sector.id));
+    try {
+      for (const sector of targets.filter(item => !item.id.startsWith('draft-'))) {
+        const response = await fetch(`${API}/investigations/${selected.id}/sectors/${sector.id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`${sector.name}: ${(await response.text()) || `HTTP ${response.status}`}`);
+      }
+      await loadSelectedData(selected);
+      setCheckedSectorIds([]);
+      setSelectedSectorId(current => current && checkedSectorIds.includes(current) ? null : current);
+      setExpandedSectorId(current => current && checkedSectorIds.includes(current) ? null : current);
+    } catch (cause) {
+      await loadSelectedData(selected);
+      setCheckedSectorIds([]);
+      setError(cause instanceof Error ? `Kunde inte radera alla valda sektorer: ${cause.message}` : 'Kunde inte radera alla valda sektorer.');
+    }
+  };
   const toggleSectorVisibility = (sectorId: string) => setHiddenSectorIds(current => ({ ...current, [sectorId]: !current[sectorId] }));
   const selectSector = (sectorId: string) => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); };
   const addPendingSector = (sector: Sector) => {
@@ -336,6 +360,12 @@ function App() {
   };
   const selectedMapLayer = mapLayers[mapType];
   const matchingSectors = filterSectorsByName(sectors, sectorSearch, Object.fromEntries(Object.entries(sectorDrafts).map(([id, draft]) => [id, draft.name])));
+  const visibleSectorIds = matchingSectors.map(sector => sector.id);
+  const selectedSectorCount = sectors.filter(sector => checkedSectorIds.includes(sector.id)).length;
+  const allVisibleSectorsChecked = visibleSectorIds.length > 0 && visibleSectorIds.every(sectorId => checkedSectorIds.includes(sectorId));
+  const toggleAllVisibleSectors = () => setCheckedSectorIds(current => allVisibleSectorsChecked
+    ? current.filter(sectorId => !visibleSectorIds.includes(sectorId))
+    : Array.from(new Set([...current, ...visibleSectorIds])));
   const invalidSectorIdSet = new Set([...invalidSectorIds, ...sectors.filter(isInvalidSector).map(sector => sector.id)]);
   const exportSelection: ExportSelection = {
     sectorIds: exportSectorIds,
@@ -388,11 +418,12 @@ function App() {
         <section className="sidebar-section sectors-section">
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
           {sectorsExpanded && <><input className="sector-search" type="search" value={sectorSearch} onChange={event => setSectorSearch(event.target.value)} placeholder="Sök sektor-namn" aria-label="Sök sektor-namn" />
+            {sectors.length > 0 && <div className="sector-bulk-actions"><button type="button" disabled={visibleSectorIds.length === 0} onClick={toggleAllVisibleSectors}>{allVisibleSectorsChecked ? 'Välj inga' : 'Välj alla'}</button><button type="button" className="danger-button" disabled={selectedSectorCount === 0} onClick={() => void deleteSelectedSectors()}>Radera valda ({selectedSectorCount})</button></div>}
             {sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : matchingSectors.length === 0 ? <p className="muted">Inga sektorer matchar sökningen.</p> : matchingSectors.map(sector => {
               const draft = sectorDrafts[sector.id] ?? { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null };
               const expanded = expandedSectorId === sector.id; const hidden = hiddenSectorIds[sector.id] === true;
               const invalid = invalidSectorIdSet.has(sector.id) || isInvalidSector(sector);
-              return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''} ${invalid ? 'invalid' : ''}`} key={sector.id}><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{invalid ? 'Ogiltig geometri' : hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
+              return <article className={`sector-card ${selectedSectorId === sector.id ? 'selected' : ''} ${invalid ? 'invalid' : ''}`} key={sector.id}><label className="sector-select-checkbox" title="Markera sektor"><input type="checkbox" checked={checkedSectorIds.includes(sector.id)} onChange={event => setCheckedSectorIds(current => event.target.checked ? [...current, sector.id] : current.filter(id => id !== sector.id))} /> <span className="sr-only">Markera {draft.name || 'sektor'}</span></label><button className="sector-card-header" onClick={() => { setSelectedSectorId(sector.id); setExpandedSectorId(expanded ? null : sector.id); }}><span>{draft.name || 'Namnlös sektor'}</span><span className="sector-card-status">{invalid ? 'Ogiltig geometri' : hidden ? 'Dold' : draft.searched ? 'Sökt' : 'Ej sökt'} · {draft.points} p</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>
                 {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
             })}</>}
         </section>

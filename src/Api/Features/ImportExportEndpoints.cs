@@ -6,13 +6,23 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using NetTopologySuite;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Geometries.Utilities;
+using NetTopologySuite.Operation.Overlay.Snap;
 using NetTopologySuite.Operation.Polygonize;
 using NetTopologySuite.Operation.Union;
+using NetTopologySuite.Precision;
 
 namespace Efp.Api.Features;
 
 public static class ImportExportEndpoints
 {
+    // The police-sector GPX export may contain one long, unsplit line with
+    // small gaps and near-duplicate vertices. This removes tiny sliver
+    // faces created by those inaccuracies without changing ordinary polygons.
+    private const double ImportedPolygonMinimumAreaKm2 = 0.2;
+    private const double ImportedLinePrecisionScale = 10_000d;
+    private const double ImportedLineSnapToleranceDegrees = 0.0015d;
+
     public static IEndpointRouteBuilder MapImportExportEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}");
@@ -79,6 +89,22 @@ public static class ImportExportEndpoints
                 created.Add(sector);
                 imported.Add(new { sector.Name, PointCount = polygon.ExteriorRing.NumPoints });
             }
+
+            // Some source systems export a complete sector underlay as one
+            // continuous track without closed rings or segment boundaries.
+            // Keep that information as an editable line sector instead of
+            // discarding the entire import when polygonization is inconclusive.
+            if (polygons.Count == 0)
+            {
+                var line = factory.CreateLineString(RemoveConsecutiveDuplicates(points));
+                if (line.NumPoints >= 2 && line.IsValid)
+                {
+                    var name = string.IsNullOrWhiteSpace(segmentName) ? $"GPX-linje {existingCount + created.Count + 1}" : segmentName.Trim();
+                    var sector = new Sector { InvestigationId = investigationId, Name = name, Status = SectorStatus.NotStarted, SearchMethod = SearchMethod.Patrol, Priority = existingCount + created.Count + 1, Instructions = $"Importerad linje från {file.FileName}. Ingen säker sluten polygon kunde skapas.", Geometry = line };
+                    created.Add(sector);
+                    imported.Add(new { sector.Name, PointCount = line.NumPoints, GeometryType = "LineString", Warning = "Importerad som linjeunderlag" });
+                }
+            }
         }
 
         if (created.Count == 0) return Results.BadRequest("GPX innehåller inga giltiga sektorer. Filen måste innehålla slutna polygoner eller ett linjeunderlag som kan polygoniseras till områden.");
@@ -88,18 +114,99 @@ public static class ImportExportEndpoints
 
     private static List<Polygon> PolygonizeTrack(GeometryFactory factory, Coordinate[] points)
     {
+        points = RemoveConsecutiveDuplicates(points);
         if (points.Select(point => $"{point.X:F7},{point.Y:F7}").Distinct().Count() < 3) return [];
         if (points.Length >= 4 && points[0].Equals2D(points[^1]))
         {
             var polygon = factory.CreatePolygon(factory.CreateLinearRing(points));
-            return polygon.IsValid && polygon.Area > 0 ? [polygon] : [];
+            if (polygon.IsValid && polygon.Area > 0) return [polygon];
+            return RepairPolygon(polygon).ToList();
         }
 
+        // Some police exports put all sector boundaries into one open
+        // trkseg. Reduce coordinate noise before noding so boundaries that
+        // should meet are treated as meeting by the polygonizer.
         var line = factory.CreateLineString(points);
-        var nodedLinework = UnaryUnionOp.Union(line);
+        var reducedLine = GeometryPrecisionReducer.Reduce(line, new PrecisionModel(ImportedLinePrecisionScale));
+        var snappedLine = reducedLine;
+        for (var pass = 0; pass < 2; pass++)
+        {
+            snappedLine = GeometrySnapper.SnapToSelf(snappedLine, ImportedLineSnapToleranceDegrees, cleanResult: true);
+        }
+        var nodedLinework = UnaryUnionOp.Union(snappedLine);
+        var averageLatitudeRadians = points.Average(point => point.Y) * Math.PI / 180d;
+        var minimumAreaDegreesSquared = ImportedPolygonMinimumAreaKm2 /
+            (111.32d * 111.32d * Math.Max(0.1d, Math.Cos(averageLatitudeRadians)));
         var polygonizer = new Polygonizer();
         polygonizer.Add(nodedLinework);
-        return polygonizer.GetPolygons().OfType<Polygon>().Where(polygon => polygon.IsValid && polygon.Area > 0).ToList();
+        var polygons = polygonizer.GetPolygons().OfType<Polygon>()
+            .SelectMany(RepairPolygon)
+            .ToList();
+
+        return AbsorbSmallPolygonArtifacts(polygons, minimumAreaDegreesSquared);
+    }
+
+    private static IEnumerable<Polygon> RepairPolygon(Polygon polygon)
+    {
+        if (polygon.IsValid && polygon.Area > 0) return [polygon];
+        var repaired = GeometryFixer.Fix(polygon);
+        return ExtractPolygons(repaired).Where(item => item.IsValid && item.Area > 0);
+    }
+
+    private static List<Polygon> AbsorbSmallPolygonArtifacts(List<Polygon> polygons, double minimumAreaDegreesSquared)
+    {
+        var significant = polygons.Where(polygon => polygon.Area >= minimumAreaDegreesSquared).ToList();
+        var small = polygons.Where(polygon => polygon.Area < minimumAreaDegreesSquared).ToList();
+
+        foreach (var artifact in small)
+        {
+            if (significant.Count == 0) break;
+
+            var candidate = significant
+                .Select((polygon, index) => new
+                {
+                    Polygon = polygon,
+                    Index = index,
+                    SharedBoundary = polygon.Boundary.Intersection(artifact.Boundary).Length,
+                })
+                .Where(item => item.SharedBoundary > 0)
+                .OrderByDescending(item => item.SharedBoundary)
+                .FirstOrDefault();
+
+            if (candidate is null) continue;
+
+            var merged = GeometryFixer.Fix(candidate.Polygon.Union(artifact));
+            var repairedPolygons = ExtractPolygons(merged).Where(polygon => polygon.IsValid && polygon.Area > 0).ToList();
+            if (repairedPolygons.Count == 1) significant[candidate.Index] = repairedPolygons[0];
+        }
+
+        return significant;
+    }
+
+    private static IEnumerable<Polygon> ExtractPolygons(Geometry geometry)
+    {
+        if (geometry is Polygon polygon)
+        {
+            yield return polygon;
+            yield break;
+        }
+
+        if (geometry is not GeometryCollection) yield break;
+
+        for (var index = 0; index < geometry.NumGeometries; index++)
+        {
+            foreach (var child in ExtractPolygons(geometry.GetGeometryN(index))) yield return child;
+        }
+    }
+
+    private static Coordinate[] RemoveConsecutiveDuplicates(Coordinate[] points)
+    {
+        var result = new List<Coordinate>();
+        foreach (var point in points)
+        {
+            if (result.Count == 0 || !result[^1].Equals2D(point)) result.Add(point);
+        }
+        return result.ToArray();
     }
 
     private static async Task<IResult> ExportSectorsGeoJsonAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, EfpDbContext db, CancellationToken ct)

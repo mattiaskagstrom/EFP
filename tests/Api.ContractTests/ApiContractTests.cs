@@ -125,6 +125,32 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task Sector_gpx_import_preserves_open_police_underlay_as_line_sector()
+    {
+        var investigation = await CreateInvestigation();
+        const string gpx = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+              <trk><trkseg>
+                <trkpt lat="59.0000" lon="18.0000" />
+                <trkpt lat="59.0100" lon="18.0100" />
+                <trkpt lat="59.0200" lon="18.0000" />
+              </trkseg></trk>
+            </gpx>
+            """;
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(gpx, Encoding.UTF8, "application/gpx+xml"), "file", "police-underlay.gpx");
+
+        var import = await client.PostAsync($"/api/v1/investigations/{investigation}/sectors/import", content);
+        Assert.Equal(HttpStatusCode.Created, import.StatusCode);
+
+        var sectors = await client.GetFromJsonAsync<JsonElement>($"/api/v1/investigations/{investigation}/sectors");
+        var sector = Assert.Single(sectors.EnumerateArray());
+        Assert.Equal("LineString", sector.GetProperty("geometry").GetProperty("type").GetString());
+        Assert.Contains("linjeunderlag", sector.GetProperty("instructions").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Export_contracts_return_expected_content_types()
     {
         var investigation = await CreateInvestigation();
