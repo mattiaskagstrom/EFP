@@ -26,6 +26,8 @@ public sealed class Investigation
     public bool IsPublic { get; set; } = true;
     [JsonIgnore]
     public string? AccessCodeHash { get; set; }
+    [JsonIgnore]
+    public string? AccessCode { get; set; }
     public int AccessCodeVersion { get; set; } = 1;
     public DateTimeOffset? AccessCodeUpdatedAt { get; set; }
     [JsonIgnore]

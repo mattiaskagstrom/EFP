@@ -98,6 +98,7 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "IsPublic" boolean NOT NULL DEFAULT TRUE;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeHash" text NULL;
+        ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCode" text NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeVersion" integer NOT NULL DEFAULT 1;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeUpdatedAt" timestamp with time zone NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "OwnerId" uuid NULL;

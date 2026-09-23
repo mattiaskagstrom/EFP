@@ -36,6 +36,8 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/tracks/import", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings/{findingId}", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/access-code", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/access-code/rotate", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings.geojson", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/admin/login", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/user/connect", out _));
@@ -190,6 +192,10 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     {
         var create = await client.PostAsJsonAsync("/api/v1/investigations", new { name = "Privat kontraktinsats", isPublic = false });
         var investigation = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var automaticCodeResponse = await client.GetAsync($"/api/v1/investigations/{investigation}/access-code");
+        Assert.Equal(HttpStatusCode.OK, automaticCodeResponse.StatusCode);
+        var automaticCode = (await automaticCodeResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(automaticCode));
         var denied = await client.PostAsJsonAsync("/api/v1/auth/user/connect", new { investigationId = investigation, callsign = "Bravo", code = "ABCDEFGH" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
 
