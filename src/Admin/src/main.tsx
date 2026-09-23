@@ -957,6 +957,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [mapFindings, setMapFindings] = useState<Finding[]>([]);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
+  const apiRef = useRef<EditorApi | null>(null);
   useMapEvents({ click: event => { if (findingMode) { window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { latitude: event.latlng.lat, longitude: event.latlng.lng } })); setFindingMode(false); onToolChange('none'); } } });
   const settings = useRef({ color, strokeStyle });
   const nextSectorNameRef = useRef(nextSectorName);
@@ -967,10 +968,10 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     if (!toolbarTarget) return;
     const button = document.createElement('button');
     button.type = 'button'; button.textContent = '📍 Fynd'; button.setAttribute('aria-label', 'Placera fynd på kartan');
-    button.onclick = () => { onToolChange('Finding'); api.placeFinding(); };
+    button.onclick = () => { onToolChange('Finding'); apiRef.current?.placeFinding(); };
     toolbarTarget.appendChild(button);
-    return () => { button.remove(); };
-  }, [toolbarTarget]);
+    return () => button.remove();
+  }, [toolbarTarget, onToolChange]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
   useEffect(() => {
@@ -1306,6 +1307,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
     text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, placeFinding: () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; setTextMode(false); setReferencePointMode(null); setFindingMode(true); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
+  apiRef.current = api;
   const createSectorLayer = (sector: Sector) => sector.geometry.type === 'LineString'
     ? L.polyline(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4 })
     : L.polygon(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4, fillColor: '#dc2626', fillOpacity: 0.15 });
