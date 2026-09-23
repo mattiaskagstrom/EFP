@@ -20,6 +20,7 @@ public static class FindingEndpoints
         group.MapGet("/findings", ListAsync);
         group.MapPost("/findings", CreateAsync).DisableAntiforgery();
         group.MapPatch("/findings/{findingId:guid}", UpdateAsync).DisableAntiforgery().RequireAuthorization("Admin");
+        group.MapDelete("/findings/{findingId:guid}", DeleteAsync).RequireAuthorization("Admin");
         group.MapGet("/findings/{findingId:guid}/image", ImageAsync);
         group.MapGet("/findings.geojson", ExportGeoJsonAsync);
         group.MapGet("/findings.gpx", ExportGpxAsync);
@@ -64,6 +65,17 @@ public static class FindingEndpoints
         if (image is not null) { await using var stream = image.OpenReadStream(); using var memory = new MemoryStream(); await stream.CopyToAsync(memory, ct); finding.ImageData = memory.ToArray(); finding.ImageContentType = image.ContentType.ToLowerInvariant(); finding.ImageFileName = Path.GetFileName(image.FileName); }
         await db.SaveChangesAsync(ct);
         return Results.Ok(ToSummary(finding, investigationId));
+    }
+
+    private static async Task<IResult> DeleteAsync(Guid investigationId, Guid findingId, EfpDbContext db, HttpContext http, CancellationToken ct)
+    {
+        if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
+        var finding = await db.Findings.FirstOrDefaultAsync(x => x.Id == findingId && x.InvestigationId == investigationId, ct);
+        if (finding is null) return Results.NotFound();
+        finding.IsDeleted = true;
+        finding.DeletedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ListAsync(Guid investigationId, [FromQuery] Guid[]? sectorIds, [FromQuery(Name = "from")] DateTimeOffset? fromDate, [FromQuery(Name = "to")] DateTimeOffset? toDate, EfpDbContext db, HttpContext http, CancellationToken ct)

@@ -91,8 +91,12 @@ using (var scope = app.Services.CreateScope())
             "ImageContentType" text NOT NULL,
             "ImageFileName" text NOT NULL,
             "ImageData" bytea NOT NULL,
-            "Geometry" geometry(Point, 4326) NOT NULL
+            "Geometry" geometry(Point, 4326) NOT NULL,
+            "IsDeleted" boolean NOT NULL DEFAULT FALSE,
+            "DeletedAt" timestamp with time zone NULL
         );
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
         CREATE INDEX IF NOT EXISTS "IX_Findings_InvestigationId" ON "Findings" ("InvestigationId");
         CREATE INDEX IF NOT EXISTS "IX_Findings_Geometry" ON "Findings" USING gist ("Geometry");
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;

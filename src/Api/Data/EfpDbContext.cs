@@ -51,6 +51,7 @@ public sealed class EfpDbContext(DbContextOptions<EfpDbContext> options) : Ident
         modelBuilder.Entity<Finding>().Property(x => x.Geometry).HasColumnType("geometry (Point, 4326)");
         modelBuilder.Entity<Finding>().HasIndex(x => x.Geometry).HasMethod("gist");
         modelBuilder.Entity<Finding>().HasIndex(x => x.InvestigationId);
+        modelBuilder.Entity<Finding>().HasQueryFilter(x => !x.IsDeleted);
         modelBuilder.Entity<ReferencePoint>().HasIndex(x => x.Geometry).HasMethod("gist");
     }
 }

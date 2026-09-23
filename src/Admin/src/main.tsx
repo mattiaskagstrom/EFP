@@ -71,6 +71,8 @@ function App() {
   const [checkedSectorIds, setCheckedSectorIds] = useState<string[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
   const [findingImages, setFindingImages] = useState<Record<string, File | null>>({});
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
   const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
@@ -157,6 +159,8 @@ function App() {
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
     setSelectedTrackId(null);
     setExpandedTrackId(null);
+    setSelectedFindingId(null);
+    setExpandedFindingId(null);
     setCheckedSectorIds([]);
   };
   useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFindingIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); setFindingImages({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); if (selected.isPublic === false) void loadAccessCode(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setFindings([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
@@ -206,7 +210,7 @@ function App() {
     };
     window.addEventListener('efp:sector-created', onSectorCreated);
     window.addEventListener('efp:sector-removed', onSectorRemoved);
-    const onFindingPlaced = (event: Event) => { const finding = (event as CustomEvent<{ latitude: number; longitude: number }>).detail; if (finding) addFindingAt(finding.latitude, finding.longitude); };
+    const onFindingPlaced = (event: Event) => { const finding = (event as CustomEvent<{ draftId: string; latitude: number; longitude: number }>).detail; if (finding) addFindingAt(finding.latitude, finding.longitude, finding.draftId); };
     window.addEventListener('efp:finding-placed', onFindingPlaced);
     return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); window.removeEventListener('efp:finding-placed', onFindingPlaced); };
   }, []);
@@ -238,12 +242,30 @@ function App() {
     setName(''); await load(); selectInvestigation(created, 'admin');
   };
   const go = (path: string) => navigateTo(path);
-  const addFindingAt = (latitude: number, longitude: number) => {
-    const id = `draft-finding-${Date.now()}`;
+  const addFindingAt = (latitude: number, longitude: number, draftId = `draft-finding-${Date.now()}`) => {
+    const id = draftId;
     setFindings(current => [{ id, submittedBy: adminIdentity?.userName ?? 'Admin', description: '', observedAt: new Date().toISOString(), submittedAt: new Date().toISOString(), imageUrl: '', longitude, latitude }, ...current]);
     setFindingImages(current => ({ ...current, [id]: null }));
   };
   const updateFinding = (id: string, patch: Partial<Finding>) => setFindings(current => current.map(finding => finding.id === id ? { ...finding, ...patch } : finding));
+  const selectFinding = (id: string) => { setSelectedFindingId(id); setExpandedFindingId(id); };
+  const deleteFinding = async (finding: Finding) => {
+    if (finding.id.startsWith('draft-')) {
+      setFindings(current => current.filter(item => item.id !== finding.id));
+      setFindingImages(current => { const next = { ...current }; delete next[finding.id]; return next; });
+      setSelectedFindingId(current => current === finding.id ? null : current);
+      setExpandedFindingId(current => current === finding.id ? null : current);
+      window.dispatchEvent(new CustomEvent('efp:finding-deleted', { detail: finding.id }));
+      return;
+    }
+    if (!selected || !window.confirm('Radera fyndet?')) return;
+    const response = await fetch(`${API}/investigations/${selected.id}/findings/${finding.id}`, { method: 'DELETE' });
+    if (!response.ok) { setError((await response.text()) || 'Fyndet kunde inte raderas.'); return; }
+    setFindings(current => current.filter(item => item.id !== finding.id));
+    setSelectedFindingId(current => current === finding.id ? null : current);
+    setExpandedFindingId(current => current === finding.id ? null : current);
+    window.dispatchEvent(new CustomEvent('efp:finding-deleted', { detail: finding.id }));
+  };
   const saveFinding = async (finding: Finding) => {
     if (!selected) return;
     const form = new FormData(); form.append('latitude', String(finding.latitude)); form.append('longitude', String(finding.longitude)); form.append('observedAt', new Date(finding.observedAt).toISOString()); form.append('description', finding.description ?? '');
@@ -253,6 +275,7 @@ function App() {
     if (!response.ok) { setError((await response.text()) || 'Fyndet kunde inte sparas.'); return; }
     const saved = await response.json() as Finding;
     setFindings(current => current.map(item => item.id === finding.id ? saved : item));
+    window.dispatchEvent(new CustomEvent('efp:finding-saved', { detail: { draftId: finding.id, finding: saved } }));
     setFindingImages(current => { const next = { ...current }; delete next[finding.id]; return next; });
     setError('');
   };
@@ -533,12 +556,12 @@ function App() {
             })}</div></>}
         </section>
         <section className="sidebar-section tracks-section"><button type="button" className="tracks-section-toggle" aria-expanded={tracksExpanded} onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && <TrackList tracks={tracks} visibleTracks={visibleTracks} onVisibleChange={(trackId, visible) => setVisibleTracks(current => ({ ...current, [trackId]: visible }))} selectedTrackId={selectedTrackId} expandedTrackId={expandedTrackId} onSelect={setSelectedTrackId} onToggleExpanded={trackId => setExpandedTrackId(current => current === trackId ? null : trackId)} onUpdatePod={(track, value) => { void updateTrackPod(track, value); }} />}</section>
-        <FindingList findings={findings} imageFiles={findingImages} onImageChange={(id, file) => setFindingImages(current => ({ ...current, [id]: file }))} onChange={updateFinding} onSave={finding => void saveFinding(finding)} />
+        <FindingList findings={findings} imageFiles={findingImages} selectedFindingId={selectedFindingId} expandedFindingId={expandedFindingId} onSelect={selectFinding} onToggleExpanded={id => setExpandedFindingId(current => current === id ? null : id)} onImageChange={(id, file) => setFindingImages(current => ({ ...current, [id]: file }))} onChange={updateFinding} onSave={finding => void saveFinding(finding)} onDelete={finding => void deleteFinding(finding)} />
         <details className="sidebar-section own-maps-section"><summary>Egna kartor</summary><div className="own-map-upload"><label>Västlig longitud<input type="number" step="any" value={mapBounds.west} onChange={event => setMapBounds(current => ({ ...current, west: event.target.value }))} /></label><label>Sydlig latitud<input type="number" step="any" value={mapBounds.south} onChange={event => setMapBounds(current => ({ ...current, south: event.target.value }))} /></label><label>Östlig longitud<input type="number" step="any" value={mapBounds.east} onChange={event => setMapBounds(current => ({ ...current, east: event.target.value }))} /></label><label>Nordlig latitud<input type="number" step="any" value={mapBounds.north} onChange={event => setMapBounds(current => ({ ...current, north: event.target.value }))} /></label><input id="own-map-upload" className="file-input" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={event => void uploadOwnMap(event)} /><label className="file-button" htmlFor="own-map-upload">Ladda upp kartbild</label></div>{ownMaps.length === 0 ? <p className="muted">Inga egna kartor uppladdade.</p> : <div className="own-map-list">{ownMaps.map(map => <div className="own-map-item" key={map.id}><label><input type="checkbox" checked={visibleOwnMaps[map.id] ?? true} onChange={event => setVisibleOwnMaps(current => ({ ...current, [map.id]: event.target.checked }))} /> {map.name}</label><button type="button" className="danger-button" onClick={() => void deleteOwnMap(map)}>Radera</button></div>)}</div>}</details>
         <ExportPanel sectors={sectors} tracks={tracks} findings={findings} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, findingIds: exportFindingIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFindingIdsChange={setExportFindingIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} getFindingUrl={format => format.findings(API, selected.id, exportSelection)} />
         <details className="sidebar-section import-section"><summary>Importera</summary><div className="import-links"><section><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section><section><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label></section></div></details>
       </aside>
-      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} />{ownMaps.filter(map => visibleOwnMaps[map.id] !== false).map(map => <ImageOverlay key={map.id} url={`${API.replace(/\/api\/v1$/, '')}${map.imageUrl}`} bounds={[[map.south, map.west], [map.north, map.east]]} opacity={0.8} />)}<TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
+      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} />{ownMaps.filter(map => visibleOwnMaps[map.id] !== false).map(map => <ImageOverlay key={map.id} url={`${API.replace(/\/api\/v1$/, '')}${map.imageUrl}`} bounds={[[map.south, map.west], [map.north, map.east]]} opacity={0.8} />)}<TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} selectedFindingId={selectedFindingId} onFindingSelect={selectFinding} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
   </main>;
 }
@@ -900,8 +923,8 @@ function FindingLayers({ findings }: { findings: Finding[] }) {
   return <>{findings.map(finding => <CircleMarker key={finding.id} center={[finding.latitude, finding.longitude]} radius={8} pathOptions={{ color: '#dc2626', fillColor: '#f87171', fillOpacity: 0.9 }}><Popup><strong>Fynd</strong><br />{finding.submittedBy}<br />{formatDateTime(finding.observedAt)}{finding.description && <><br />{finding.description}</>}</Popup></CircleMarker>)}</>;
 }
 
-function FindingList({ findings, imageFiles, onImageChange, onChange, onSave }: { findings: Finding[]; imageFiles: Record<string, File | null>; onImageChange: (id: string, file: File | null) => void; onChange: (id: string, patch: Partial<Finding>) => void; onSave: (finding: Finding) => void }) {
-  return <details className="sidebar-section collapsible-sidebar-section"><summary>Fynd ({findings.length})</summary><div className="collapsible-sidebar-content">{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : findings.map(finding => <article className="finding-card" key={finding.id}><div className="finding-card-heading"><strong>{finding.submittedBy}</strong><span>{finding.id.startsWith('draft-') ? 'Nytt fynd' : formatDateTime(finding.submittedAt)}</span></div>{finding.imageUrl && <img className="finding-image" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="Bild för fyndet" />}{imageFiles[finding.id] && <small>{imageFiles[finding.id]?.name}</small>}<label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => onImageChange(finding.id, event.target.files?.[0] ?? null)} /></label><label>Latitud<input type="number" step="any" value={finding.latitude} onChange={event => onChange(finding.id, { latitude: Number(event.target.value) })} /></label><label>Longitud<input type="number" step="any" value={finding.longitude} onChange={event => onChange(finding.id, { longitude: Number(event.target.value) })} /></label><label>Tidpunkt<input type="datetime-local" value={finding.observedAt.slice(0, 16)} onChange={event => onChange(finding.id, { observedAt: new Date(event.target.value).toISOString() })} /></label><label>Beskrivning<textarea rows={3} value={finding.description ?? ''} onChange={event => onChange(finding.id, { description: event.target.value })} /></label><button type="button" onClick={() => onSave(finding)}>Spara fynd</button></article>)}</div></details>;
+function FindingList({ findings, imageFiles, selectedFindingId, expandedFindingId, onSelect, onToggleExpanded, onImageChange, onChange, onSave, onDelete }: { findings: Finding[]; imageFiles: Record<string, File | null>; selectedFindingId: string | null; expandedFindingId: string | null; onSelect: (id: string) => void; onToggleExpanded: (id: string) => void; onImageChange: (id: string, file: File | null) => void; onChange: (id: string, patch: Partial<Finding>) => void; onSave: (finding: Finding) => void; onDelete: (finding: Finding) => void }) {
+  return <details className="sidebar-section collapsible-sidebar-section"><summary>Fynd ({findings.length})</summary><div className="collapsible-sidebar-content">{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : findings.map(finding => { const expanded = expandedFindingId === finding.id; return <article className={`finding-card ${selectedFindingId === finding.id ? 'selected' : ''}`} key={finding.id}><button type="button" className="finding-card-header" onClick={() => { onSelect(finding.id); onToggleExpanded(finding.id); }}><span><strong>{finding.submittedBy}</strong><small>{finding.id.startsWith('draft-') ? 'Nytt fynd' : formatDateTime(finding.submittedAt)}</small></span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>{expanded && <div className="finding-card-body" onClick={event => event.stopPropagation()}>{finding.imageUrl && <img className="finding-image" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="Bild för fyndet" />}{imageFiles[finding.id] && <small>{imageFiles[finding.id]?.name}</small>}<label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => onImageChange(finding.id, event.target.files?.[0] ?? null)} /></label><label>Latitud<input type="number" step="any" value={finding.latitude} onChange={event => onChange(finding.id, { latitude: Number(event.target.value) })} /></label><label>Longitud<input type="number" step="any" value={finding.longitude} onChange={event => onChange(finding.id, { longitude: Number(event.target.value) })} /></label><label>Tidpunkt<input type="datetime-local" value={finding.observedAt.slice(0, 16)} onChange={event => onChange(finding.id, { observedAt: new Date(event.target.value).toISOString() })} /></label><label>Beskrivning<textarea rows={3} value={finding.description ?? ''} onChange={event => onChange(finding.id, { description: event.target.value })} /></label><div className="finding-card-actions"><button type="button" onClick={() => onSave(finding)}>Spara fynd</button><button type="button" className="danger-button" onClick={() => onDelete(finding)}>Radera fynd</button></div></div>}</article>; })}</div></details>;
 }
 
 function TrackLayers({ tracks, visibleTracks, selectedTrackId, onTrackSelect }: { tracks: Track[]; visibleTracks: Record<string, boolean>; selectedTrackId: string | null; onTrackSelect: (trackId: string) => void }) {
@@ -933,7 +956,7 @@ function limitTrackCoordinates(coordinates: number[][], maximum = 5000): number[
   return Array.from({ length: maximum }, (_, index) => coordinates[Math.round(index * step)]);
 }
 
-function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorName, activeTool, onToolChange, selectedSectorId, hiddenSectorIds, onSectorSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; sectors: Sector[]; nextSectorName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedSectorId: string | null; hiddenSectorIds: Record<string, boolean>; onSectorSelect: (sectorId: string) => void; onReady: (api: EditorApi) => void }) {
+function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorName, activeTool, onToolChange, selectedSectorId, hiddenSectorIds, onSectorSelect, selectedFindingId, onFindingSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; sectors: Sector[]; nextSectorName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedSectorId: string | null; hiddenSectorIds: Record<string, boolean>; onSectorSelect: (sectorId: string) => void; selectedFindingId: string | null; onFindingSelect: (findingId: string) => void; onReady: (api: EditorApi) => void }) {
   const map = useMap();
   const persistedSectorKey = JSON.stringify(sectors.filter(sector => !sector.id.startsWith('draft-')));
   const history = useRef<DrawingSnapshot[][]>([[]]);
@@ -956,6 +979,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const [findingMode, setFindingMode] = useState(false);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [mapFindings, setMapFindings] = useState<Finding[]>([]);
+  const findingLayers = useRef<Record<string, L.Marker>>({});
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
   useMapEvents({ click: event => { if (findingMode) { const draftId = `draft-map-finding-${Date.now()}`; const now = new Date().toISOString(); setMapFindings(current => [{ id: draftId, submittedBy: 'Admin', description: '', observedAt: now, submittedAt: now, imageUrl: null, longitude: event.latlng.lng, latitude: event.latlng.lat }, ...current]); window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { draftId, latitude: event.latlng.lat, longitude: event.latlng.lng } })); setFindingMode(false); onToolChange('none'); } } });
   const settings = useRef({ color, strokeStyle });
@@ -967,9 +991,33 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
   useEffect(() => {
     const group = L.layerGroup().addTo(map);
-    mapFindings.forEach(finding => L.marker([finding.latitude, finding.longitude], { title: `Fynd från ${finding.submittedBy}`, icon: L.divIcon({ className: 'efp-finding-marker', html: '<span aria-hidden="true">●</span>', iconSize: [28, 36], iconAnchor: [14, 34] }) }).bindTooltip(`Fynd från ${escapeHtml(finding.submittedBy)}<br>${formatDateTime(finding.observedAt)}`).addTo(group));
-    return () => { group.remove(); };
-  }, [map, mapFindings]);
+    findingLayers.current = {};
+    mapFindings.forEach(finding => {
+      const marker = L.marker([finding.latitude, finding.longitude], { title: `Fynd från ${finding.submittedBy}`, icon: L.divIcon({ className: `efp-finding-marker ${finding.id === selectedFindingId ? 'selected' : ''}`, html: '<span aria-hidden="true">●</span>', iconSize: [28, 36], iconAnchor: [14, 34] }) }).bindTooltip(`Fynd från ${escapeHtml(finding.submittedBy)}<br>${formatDateTime(finding.observedAt)}`).addTo(group);
+      marker.on('click', () => onFindingSelect(finding.id));
+      findingLayers.current[finding.id] = marker;
+    });
+    return () => { group.remove(); findingLayers.current = {}; };
+  }, [map, mapFindings, selectedFindingId, onFindingSelect]);
+  useEffect(() => {
+    if (!selectedFindingId) return;
+    const marker = findingLayers.current[selectedFindingId];
+    if (marker) map.panTo(marker.getLatLng(), { animate: true });
+  }, [map, selectedFindingId]);
+  useEffect(() => {
+    const onSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ draftId: string; finding: Finding }>).detail;
+      if (!detail) return;
+      setMapFindings(current => current.map(item => item.id === detail.draftId ? detail.finding : item));
+    };
+    const onDeleted = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (id) setMapFindings(current => current.filter(item => item.id !== id));
+    };
+    window.addEventListener('efp:finding-saved', onSaved);
+    window.addEventListener('efp:finding-deleted', onDeleted);
+    return () => { window.removeEventListener('efp:finding-saved', onSaved); window.removeEventListener('efp:finding-deleted', onDeleted); };
+  }, []);
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
   const isSectorLayer = (layer: any) => Boolean(layer.__sectorId || layer.__sector);

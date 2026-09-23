@@ -20,7 +20,7 @@
     ,"/api/v1/investigations/{investigationId}/access-code": ["get"]
     ,"/api/v1/investigations/{investigationId}/access-code/rotate": ["post"]
     ,"/api/v1/investigations/{investigationId}/findings": ["get", "post"]
-    ,"/api/v1/investigations/{investigationId}/findings/{findingId}": ["patch"]
+    ,"/api/v1/investigations/{investigationId}/findings/{findingId}": ["patch", "delete"]
     ,"/api/v1/investigations/{investigationId}/findings/{findingId}/image": ["get"]
     ,"/api/v1/investigations/{investigationId}/findings.geojson": ["get"]
     ,"/api/v1/investigations/{investigationId}/findings.gpx": ["get"]

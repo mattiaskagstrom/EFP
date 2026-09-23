@@ -143,6 +143,8 @@ public sealed class Finding
     [JsonIgnore]
     public byte[] ImageData { get; set; } = [];
     public Point Geometry { get; set; } = default!;
+    public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
 }
 
 public sealed class ReferencePoint
