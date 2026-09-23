@@ -135,6 +135,7 @@ public sealed class Finding
     public Guid InvestigationId { get; set; }
     public Investigation? Investigation { get; set; }
     public required string SubmittedBy { get; set; }
+    public string? Name { get; set; }
     public string? Description { get; set; }
     public DateTimeOffset ObservedAt { get; set; }
     public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -28,7 +28,7 @@ public static class FindingEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> CreateAsync(Guid investigationId, IFormFile? image, [FromForm] double longitude, [FromForm] double latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, EfpDbContext db, HttpContext http, CancellationToken ct)
+    private static async Task<IResult> CreateAsync(Guid investigationId, IFormFile? image, [FromForm] double longitude, [FromForm] double latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, [FromForm] string? name, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (!await db.Investigations.AnyAsync(x => x.Id == investigationId, ct)) return Results.NotFound("Investigation not found.");
@@ -45,13 +45,13 @@ public static class FindingEndpoints
         var imageData = Array.Empty<byte>();
         if (image is not null) { await using var stream = image.OpenReadStream(); using var memory = new MemoryStream(); await stream.CopyToAsync(memory, ct); imageData = memory.ToArray(); }
         var geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(longitude, latitude));
-        var finding = new Finding { InvestigationId = investigationId, SubmittedBy = submittedBy.Trim(), Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(), ObservedAt = observedAt ?? DateTimeOffset.UtcNow, ImageContentType = image?.ContentType.ToLowerInvariant() ?? "application/octet-stream", ImageFileName = image is null ? "" : Path.GetFileName(image.FileName), ImageData = imageData, Geometry = geometry };
+        var finding = new Finding { InvestigationId = investigationId, SubmittedBy = submittedBy.Trim(), Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim(), Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(), ObservedAt = observedAt ?? DateTimeOffset.UtcNow, ImageContentType = image?.ContentType.ToLowerInvariant() ?? "application/octet-stream", ImageFileName = image is null ? "" : Path.GetFileName(image.FileName), ImageData = imageData, Geometry = geometry };
         db.Findings.Add(finding);
         await db.SaveChangesAsync(ct);
         return Results.Created($"/api/v1/investigations/{investigationId}/findings/{finding.Id}", ToSummary(finding, investigationId));
     }
 
-    private static async Task<IResult> UpdateAsync(Guid investigationId, Guid findingId, IFormFile? image, [FromForm] double? longitude, [FromForm] double? latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, EfpDbContext db, HttpContext http, CancellationToken ct)
+    private static async Task<IResult> UpdateAsync(Guid investigationId, Guid findingId, IFormFile? image, [FromForm] double? longitude, [FromForm] double? latitude, [FromForm] DateTimeOffset? observedAt, [FromForm] string? description, [FromForm] string? name, EfpDbContext db, HttpContext http, CancellationToken ct)
     {
         if (!await InvestigationAccessEndpoints.CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         var finding = await db.Findings.FirstOrDefaultAsync(x => x.Id == findingId && x.InvestigationId == investigationId, ct);
@@ -61,6 +61,7 @@ public static class FindingEndpoints
         if (image is not null && !ImageTypes.Contains(image.ContentType.ToLowerInvariant())) return Results.ValidationProblem(new Dictionary<string, string[]> { ["image"] = ["Bilden måste vara JPEG, PNG eller WebP."] });
         if (longitude.HasValue) finding.Geometry = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326).CreatePoint(new Coordinate(longitude.Value, latitude!.Value));
         if (observedAt.HasValue) finding.ObservedAt = observedAt.Value;
+        if (name is not null) finding.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
         finding.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         if (image is not null) { await using var stream = image.OpenReadStream(); using var memory = new MemoryStream(); await stream.CopyToAsync(memory, ct); finding.ImageData = memory.ToArray(); finding.ImageContentType = image.ContentType.ToLowerInvariant(); finding.ImageFileName = Path.GetFileName(image.FileName); }
         await db.SaveChangesAsync(ct);
@@ -98,7 +99,7 @@ public static class FindingEndpoints
         if (!await InvestigationAccessEndpoints.CanAccessAsync(investigationId, http, db, ct)) return Results.Unauthorized();
         if (fromDate > toDate) return Results.BadRequest("Exportens starttid måste vara före sluttiden.");
         var findings = await FilterAsync(investigationId, sectorIds, fromDate, toDate, db, ct, findingIds);
-        var features = findings.Select(f => new { type = "Feature", id = f.Id, properties = new { f.SubmittedBy, f.Description, f.ObservedAt, f.SubmittedAt, ImageUrl = $"/api/v1/investigations/{investigationId}/findings/{f.Id}/image" }, geometry = new { type = "Point", coordinates = new[] { f.Geometry.X, f.Geometry.Y } } });
+        var features = findings.Select(f => new { type = "Feature", id = f.Id, properties = new { f.Name, f.SubmittedBy, f.Description, f.ObservedAt, f.SubmittedAt, ImageUrl = $"/api/v1/investigations/{investigationId}/findings/{f.Id}/image" }, geometry = new { type = "Point", coordinates = new[] { f.Geometry.X, f.Geometry.Y } } });
         return Results.Json(new { type = "FeatureCollection", features });
     }
 
@@ -111,7 +112,7 @@ public static class FindingEndpoints
         var root = new XElement(ns + "gpx", new XAttribute("version", "1.1"), new XAttribute("creator", "EFP"));
         foreach (var finding in findings)
         {
-            root.Add(new XElement(ns + "wpt", new XAttribute("lat", finding.Geometry.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", finding.Geometry.X.ToString(CultureInfo.InvariantCulture)), new XElement(ns + "name", $"Fynd från {finding.SubmittedBy}"), new XElement(ns + "time", finding.ObservedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)), new XElement(ns + "cmt", finding.Description ?? "")));
+            root.Add(new XElement(ns + "wpt", new XAttribute("lat", finding.Geometry.Y.ToString(CultureInfo.InvariantCulture)), new XAttribute("lon", finding.Geometry.X.ToString(CultureInfo.InvariantCulture)), new XElement(ns + "name", finding.Name ?? $"Fynd från {finding.SubmittedBy}"), new XElement(ns + "time", finding.ObservedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)), new XElement(ns + "cmt", finding.Description ?? "")));
         }
         return Results.Text(new XDocument(new XDeclaration("1.0", "utf-8", "yes"), root).ToString(), "application/gpx+xml");
     }
@@ -132,5 +133,5 @@ public static class FindingEndpoints
         return await query.OrderByDescending(x => x.ObservedAt).ToListAsync(ct);
     }
 
-    private static object ToSummary(Finding finding, Guid investigationId) => new { finding.Id, finding.SubmittedBy, finding.Description, finding.ObservedAt, finding.SubmittedAt, HasImage = finding.ImageData.Length > 0, ImageUrl = finding.ImageData.Length > 0 ? $"/api/v1/investigations/{investigationId}/findings/{finding.Id}/image" : null, Longitude = finding.Geometry.X, Latitude = finding.Geometry.Y };
+    private static object ToSummary(Finding finding, Guid investigationId) => new { finding.Id, finding.Name, finding.SubmittedBy, finding.Description, finding.ObservedAt, finding.SubmittedAt, HasImage = finding.ImageData.Length > 0, ImageUrl = finding.ImageData.Length > 0 ? $"/api/v1/investigations/{investigationId}/findings/{finding.Id}/image" : null, Longitude = finding.Geometry.X, Latitude = finding.Geometry.Y };
 }

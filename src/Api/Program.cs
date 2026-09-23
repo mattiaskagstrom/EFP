@@ -85,6 +85,7 @@ using (var scope = app.Services.CreateScope())
             "Id" uuid NOT NULL PRIMARY KEY,
             "InvestigationId" uuid NOT NULL REFERENCES "Investigations" ("Id") ON DELETE CASCADE,
             "SubmittedBy" text NOT NULL,
+            "Name" text NULL,
             "Description" text NULL,
             "ObservedAt" timestamp with time zone NOT NULL,
             "SubmittedAt" timestamp with time zone NOT NULL,
@@ -97,6 +98,7 @@ using (var scope = app.Services.CreateScope())
         );
         ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
         ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "Name" text NULL;
         CREATE INDEX IF NOT EXISTS "IX_Findings_InvestigationId" ON "Findings" ("InvestigationId");
         CREATE INDEX IF NOT EXISTS "IX_Findings_Geometry" ON "Findings" USING gist ("Geometry");
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;
