@@ -17,6 +17,8 @@ En första version bör fokusera på ett komplett men avgränsat arbetsflöde:
 
 Den mobila webb/PWA-delen är ett separat, enklare arbetsflöde för användare som redan använder annan GPS-utrustning. GPS-inspelning i webbläsaren ingår inte i första versionen.
 
+Webbappen har separata roller. Administratören använder `/admin` och användaren `/user`. Fram tills QR- eller kodautentisering är implementerad visar användarläget alla planerade och aktiva insatser. Detta är ett tillfälligt utvecklingsläge och ska senare ersättas eller kompletteras med insatsbegränsad åtkomst.
+
 ## 2. Funktioner efter MVP
 
 - automatisk synkronisering

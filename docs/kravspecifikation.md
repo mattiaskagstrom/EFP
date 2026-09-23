@@ -17,6 +17,18 @@ Systemet ska bestå av:
 
 Applikationen ska kunna stödja flera sökmetoder, däribland patrullsök, skallgångssök och ledstångssök. Begrepp och förkortningar för MSO dokumenteras i [Sökmetoder och MSO-begrepp](sokmetoder-och-mso.md).
 
+## 1.1 Webbroller och URL-navigering
+
+När webbappen öppnas ska användaren först kunna välja administratörsläge eller användarläge.
+
+Administratörsläget ska använda URL-sökvägarna `/admin` och `/admin/investigations/{id}`. Användarläget ska använda `/user` och `/user/investigations/{id}`.
+
+URL:en ska uppdateras när användaren väljer läge eller sökinsats. Direktlänkar ska öppna motsvarande läge och sökinsats. Webbläsarens bakåt- och framåtknappar ska fungera.
+
+Användarläget ska initialt visa alla sökinsatser med status planerad eller aktiv. Det får inte visa funktioner för att skapa, redigera eller arkivera sökinsatser. När QR- eller kodautentisering införs ska användarläget begränsas till den insats som användaren är ansluten till.
+
+Direktlänkar får inte kringgå framtida autentisering. Saknade, avslutade, arkiverade eller otillåtna insatser ska ge ett tydligt fel utan att öppna redigeringsvyn.
+
 ## 2. Användarroller
 
 ### Mobil användare

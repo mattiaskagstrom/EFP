@@ -23,6 +23,25 @@ Adminvyn är indelad i tre tydliga områden:
 
 Kartvyn ska vara den dominerande ytan eftersom de viktigaste arbetsuppgifterna sker geografiskt. Vänsterpanelen ska vara tillräckligt smal för att inte minska kartans användbara yta, men tillräckligt bred för att sökinsatsernas namn ska kunna läsas.
 
+## Val av gränssnitt
+
+När webbappen öppnas ska användaren först välja **Administratör** eller **Användare**.
+
+Administratören får tillgång till hela planerings- och redigeringsflödet. Användaren får ett separat flöde för planerade och aktiva sökinsatser och ska inte se kontroller för att skapa, redigera eller arkivera insatser.
+
+Användarläget är initialt öppet för planerade och aktiva insatser. När insatskod eller QR-autentisering införs ska åtkomsten begränsas till den insats som anslutningen gäller.
+
+## URL och direktlänkar
+
+Rena sökvägar används för att göra det möjligt att dela länkar till en specifik insats:
+
+- `/admin`
+- `/admin/investigations/{id}`
+- `/user`
+- `/user/investigations/{id}`
+
+URL:en ska ändras när användaren väljer roll eller insats och webbläsarens bakåt- och framåtknappar ska fungera. En direktlänk ska öppna rätt vy, men ska inte kringgå framtida QR- eller kodautentisering.
+
 ## Val av sökinsats före karta
 
 Användaren ska först välja en befintlig sökinsats eller skapa en ny. Ingen karta visas innan en sökinsats är vald. Detta minskar risken att användaren arbetar mot fel insats och gör det tydligt vilket geografiskt underlag som laddas.

@@ -5,6 +5,17 @@
 
 Den här listan beskriver funktioner som är synliga för administratörer och användare. Tekniska krav, drift, API:er och interna implementationer ingår inte. En markerad ruta betyder att funktionen finns i den nuvarande MVP:n; en omarkerad ruta betyder att den är planerad eller ännu inte verifierad som färdig.
 
+## Gemensam webbstart och roller
+
+- [x] Välja mellan administratörsläge och användarläge när webbappen öppnas.
+- [x] Navigera direkt till adminlistan via en URL.
+- [x] Navigera direkt till användarlistan via en URL.
+- [x] Direktöppna en sökinsats via en URL.
+- [x] Uppdatera URL:en när användaren navigerar mellan lägen och sökinsatser.
+- [x] Användarläget visar endast planerade och aktiva sökinsatser.
+- [x] Användarläget saknar funktioner för att skapa, redigera eller arkivera sökinsatser.
+- [ ] Begränsa användarläget med QR-kod eller insatskod.
+
 ## Webbsida – administrationsgränssnitt
 
 ### Sökinsatser
@@ -168,34 +179,36 @@ Den mobila webbdelen är ett enklare komplement för användare som spelar in sp
 
 ### Anslutning och insatsinformation
 
-- [ ] Öppna den mobilanpassade webbappen.
+- [x] Öppna den mobilanpassade webbappen.
 - [ ] Installera webbappen som PWA på mobilens hemskärm.
 - [ ] Ansluta till en sökinsats genom att skanna en QR-kod.
 - [ ] Ansluta genom att skriva in en kort anslutningskod.
 - [ ] Ange anropsnamn vid anslutning.
-- [ ] Välja sökinsats efter anslutning.
-- [ ] Se aktuell sökinsats och användarens behöriga sektorer.
+- [x] Välja sökinsats efter anslutning.
+- [x] Se aktuell sökinsats och dess sektorer.
 - [ ] Endast se tilldelade eller publicerade sektorer samt egna uppladdningar.
 
 ### Sektorer och filutbyte
 
-- [ ] Ladda ner behöriga sektorer från sökinsatsen.
-- [ ] Välja bland samma exportformat som admin-gränssnittet stödjer.
-- [ ] Se sektorernas namn, status och relevanta instruktioner.
+- [x] Välja en eller flera sektorer med kryssrutor.
+- [x] Välja alla eller inga sektorer.
+- [x] Ladda ner valda sektorer från sökinsatsen.
+- [x] Välja bland samma exportformat som admin-gränssnittet stödjer.
+- [x] Se sektorernas namn och status.
 
 ### Uppladdning av externa spår
 
-- [ ] Välja en eller flera spårfiler från en extern GPS-app eller GPS-enhet.
+- [x] Välja en eller flera spårfiler från en extern GPS-app eller GPS-enhet.
 - [ ] Ange metadata för uppladdningen, exempelvis POD, patrull/grupp, anropsnamn, sektor och anteckning.
 - [ ] Validera spårfiler innan uppladdning.
-- [ ] Visa tydlig status för lyckade och misslyckade uppladdningar.
+- [x] Visa tydlig status för lyckade och misslyckade uppladdningar.
 - [ ] Kunna försöka ladda upp en misslyckad fil igen.
 - [ ] Visa historik över egna uppladdningar.
 - [ ] Behålla originalspårets geometri efter uppladdning.
 
 ### Avgränsning i första versionen
 
-- [ ] Inte spela in GPS-spår i webbläsaren.
+- [x] Inte spela in GPS-spår i webbläsaren.
 - [ ] Inte kräva fullständigt användarkonto.
 - [ ] Inte ge åtkomst till andra deltagares spår.
 - [ ] Börja med onlinebaserat filutbyte.

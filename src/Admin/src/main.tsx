@@ -14,6 +14,7 @@ import './styles.css';
 import { filterSectorsByName } from './sectorSearch';
 import { InvestigationEditButton } from './InvestigationEditButton';
 import { exportFormats, type ExportFormat, type ExportSelection } from './exportFormats';
+import { investigationPath, navigateTo, parseRoute, type AppRole, type AppRoute } from './routing';
 
 type Investigation = { id: string; name: string; status: string; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
@@ -35,7 +36,9 @@ const formatDateTime = (value: string) => value ? new Date(value).toLocaleString
 const investigationStatusLabel = (status: string) => ({ Planned: 'Planerad', Active: 'Aktiv', Paused: 'Pausad', Closed: 'Avslutad', Archived: 'Arkiverad' }[status] ?? status);
 
 function App() {
+  const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [investigations, setInvestigations] = useState<Investigation[]>([]);
+  const [investigationsLoaded, setInvestigationsLoaded] = useState(false);
   const [selected, setSelected] = useState<Investigation | null>(null);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
@@ -51,6 +54,8 @@ function App() {
   const [error, setError] = useState('');
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
   const [expandedSectorId, setExpandedSectorId] = useState<string | null>(null);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+  const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
   const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
   const [invalidSectorIds, setInvalidSectorIds] = useState<string[]>([]);
@@ -65,8 +70,39 @@ function App() {
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '' });
   const [investigationSaving, setInvestigationSaving] = useState(false);
 
-  const load = async () => setInvestigations(await fetch(`${API}/investigations`).then(r => r.json()));
+  const load = async () => {
+    const response = await fetch(`${API}/investigations`);
+    const data = response.ok ? await response.json() : [];
+    setInvestigations(data);
+    setInvestigationsLoaded(true);
+  };
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const onPopState = () => setRoute(parseRoute(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  useEffect(() => {
+    if (route.kind !== 'investigation') {
+      setSelected(null);
+      setError('');
+      return;
+    }
+    if (!investigationsLoaded) return;
+    const investigation = investigations.find(item => item.id === route.id);
+    if (!investigation) {
+      setSelected(null);
+      setError('Sökinsatsen kunde inte hittas. Kontrollera länken.');
+      return;
+    }
+    if (route.role === 'user' && !['Planned', 'Active'].includes(investigation.status)) {
+      setSelected(null);
+      setError('Sökinsatsen är inte tillgänglig i användarläget. Endast planerade och aktiva insatser kan öppnas.');
+      return;
+    }
+    setError('');
+    setSelected(investigation);
+  }, [route, investigations, investigationsLoaded]);
   const loadSelectedData = async (investigation: Investigation) => {
     const [sectorResponse, trackResponse, referencePointResponse] = await Promise.all([
       fetch(`${API}/investigations/${investigation.id}/sectors`),
@@ -90,6 +126,8 @@ function App() {
     setTracks(loadedTracks);
     setReferencePoints(loadedReferencePoints);
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
+    setSelectedTrackId(null);
+    setExpandedTrackId(null);
   };
   useEffect(() => { setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '' }); void loadSelectedData(selected); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
@@ -119,6 +157,10 @@ function App() {
     if (!selectedSectorId) return;
     window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.sector-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
   }, [selectedSectorId]);
+  useEffect(() => {
+    if (!selectedTrackId) return;
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.track-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }, [selectedTrackId]);
   useEffect(() => {
     const onSectorCreated = (event: Event) => {
       const sector = (event as CustomEvent<Sector>).detail;
@@ -161,7 +203,12 @@ function App() {
     const response = await fetch(`${API}/investigations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: null }) });
     if (!response.ok) return setError(await response.text());
     const created = await response.json() as Investigation;
-    setName(''); await load(); setSelected(created);
+    setName(''); await load(); selectInvestigation(created, 'admin');
+  };
+  const go = (path: string) => navigateTo(path);
+  const selectInvestigation = (investigation: Investigation, role: AppRole) => {
+    setSelected(investigation);
+    go(investigationPath(role, investigation.id));
   };
   const saveInvestigation = async () => {
     if (!selected || !investigationDraft.name.trim()) return setError('Insatsens namn måste anges.');
@@ -322,19 +369,21 @@ function App() {
     setExpandedSectorId(null);
   };
 
-  if (!selected) return <main className="selection-screen">
-    <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>
-    {error && <p className="error">{error}</p>}
-    <section className="investigation-picker"><h2>Välj sökinsats</h2><p>Välj en befintlig sökinsats eller skapa en ny för att öppna kartan och dess underlag.</p><div className="investigation-create"><input value={name} onChange={event => setName(event.target.value)} placeholder="Namn på ny sökinsats" /><button onClick={() => void createInvestigation()}>Skapa sökinsats</button></div><div className="investigation-list">{investigations.map(item => <button onClick={() => setSelected(item)} key={item.id}>{item.name}<small>{item.status}</small></button>)}</div></section>
-  </main>;
+  if (route.kind === 'not-found') return <RouteNotFound onHome={() => go('/')} />;
+  if (route.kind === 'role-picker') return <RolePicker onSelect={role => go(`/${role}`)} />;
+  if (!selected) {
+    const visibleInvestigations = route.role === 'user' ? investigations.filter(item => ['Planned', 'Active'].includes(item.status)) : investigations;
+    return <InvestigationPicker role={route.role} investigations={visibleInvestigations} name={name} error={error} onNameChange={setName} onCreate={() => void createInvestigation()} onSelect={item => selectInvestigation(item, route.role)} onBack={() => go('/')} />;
+  }
+  if (route.role === 'user') return <UserInvestigationView investigation={selected} onBack={() => go('/user')} />;
 
   return <main className="app-shell">
-    <header><h1>EFP sökledning</h1><span>Admin MVP</span></header>
+    <header><h1>EFP sökledning</h1><span>Administratör</span></header>
     {error && <p className="error">{error}</p>}
     <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
     <div className="layout">
       <aside className="investigation-sidebar">
-        <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) setSelected(null); }}>← Byt sökinsats</button>
+        <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) { setSelected(null); go('/admin'); } }}>← Byt sökinsats</button>
         <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : '💾 Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>↶ Släng ändringar</button>{invalidSectorIdSet.size > 0 && <button className="danger-button invalid-sector-action" onClick={removeInvalidSectors}>⌫ Radera {invalidSectorIdSet.size} ogiltiga sektorer</button>}</section>
         <section className="sidebar-section sectors-section">
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
@@ -347,12 +396,88 @@ function App() {
                 {expanded && <div className="sector-card-body" onClick={event => event.stopPropagation()}><label>Namn<input value={draft.name} onChange={event => updateSectorDraft(sector.id, { name: event.target.value })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.searched} onChange={event => updateSectorDraft(sector.id, { searched: event.target.checked, searchedAt: event.target.checked ? draft.searchedAt ?? new Date().toISOString() : null })} /> Sökt</label><label>Sökt när<input type="datetime-local" disabled={!draft.searched} value={draft.searchedAt ? draft.searchedAt.slice(0, 16) : ''} onChange={event => updateSectorDraft(sector.id, { searchedAt: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label><label>POA (%)<input type="number" min="0" max="100" step="0.1" value={draft.poa ?? ''} onChange={event => updateSectorDraft(sector.id, { poa: event.target.value === '' ? null : Number(event.target.value) })} /></label><label>Poäng<input type="number" min="0" value={draft.points} onChange={event => updateSectorDraft(sector.id, { points: Math.max(0, Number(event.target.value) || 0) })} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.showName} onChange={event => updateSectorDraft(sector.id, { showName: event.target.checked })} /> Visa namn i kartan</label><label className="checkbox-label"><input type="checkbox" checked={draft.showArea} onChange={event => updateSectorDraft(sector.id, { showArea: event.target.checked })} /> Visa storlek i km²</label><button className="simplify-button" onClick={() => editor?.simplifySector(sector.id, simplifyTolerance)}>Förenkla polygon</button><div className="sector-card-actions"><button onClick={() => toggleSectorVisibility(sector.id)}>{hidden ? 'Visa sektor i kartan' : 'Dölj sektor i kartan'}</button><button className="danger-button" onClick={() => void deleteSector(sector)}>Radera sektor</button></div></div>}</article>;
             })}</>}
         </section>
-        <section className="sidebar-section tracks-section"><button className="tracks-section-toggle" onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && (tracks.length === 0 ? <p className="muted">Inga importerade spår.</p> : <div className="track-list">{tracks.map(track => <label key={track.id}><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /><span>{track.sourceFile ?? track.callsign ?? 'GPX-import'}</span><input aria-label={`POD för ${track.sourceFile ?? track.callsign ?? 'spår'}`} type="number" min="0" max="100" step="0.1" value={track.pod ?? ''} placeholder="POD %" onChange={event => void updateTrackPod(track, event.target.value)} /></label>)}</div>)}</section>
+        <section className="sidebar-section tracks-section"><button className="tracks-section-toggle" onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && (tracks.length === 0 ? <p className="muted">Inga importerade spår.</p> : <div className="track-list">{tracks.map(track => { const expanded = expandedTrackId === track.id; const selectedTrack = selectedTrackId === track.id; const label = track.sourceFile ?? track.callsign ?? 'GPX-import'; return <article className={`track-card ${selectedTrack ? 'selected' : ''}`} key={track.id}><button className="track-card-header" onClick={() => { setSelectedTrackId(track.id); setExpandedTrackId(expanded ? null : track.id); }}><span>{label}</span><span className="track-card-status">{track.pod !== null && track.pod !== undefined ? `POD ${track.pod}%` : 'POD ej angiven'}</span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>{expanded && <div className="track-card-body" onClick={event => event.stopPropagation()}><label className="track-visibility"><input type="checkbox" checked={visibleTracks[track.id] ?? true} onChange={event => setVisibleTracks(current => ({ ...current, [track.id]: event.target.checked }))} /> Visa spår i kartan</label><label>Filnamn<span className="track-metadata-value">{track.sourceFile || 'Inte angivet'}</span></label><label>Anropsnamn<span className="track-metadata-value">{track.callsign || 'Inte angivet'}</span></label><label>POD (%)<input aria-label={`POD för ${label}`} type="number" min="0" max="100" step="0.1" value={track.pod ?? ''} placeholder="Inte angivet" onChange={event => void updateTrackPod(track, event.target.value)} /></label></div>}</article>; })}</div>)}</section>
         <ExportPanel sectors={sectors} tracks={tracks} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} />
         <details className="sidebar-section import-section"><summary>Importera</summary><div className="import-links"><section><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section><section><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label></section></div></details>
       </aside>
-      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Fyrkant</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
+      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} /><TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
+  </main>;
+}
+
+function RolePicker({ onSelect }: { onSelect: (role: AppRole) => void }) {
+  return <main className="selection-screen role-selection">
+    <header><h1>EFP sökledning</h1><span>Välj läge</span></header>
+    <section className="role-picker">
+      <h2>Hur vill du använda EFP?</h2>
+      <button onClick={() => onSelect('admin')}><strong>Administratör</strong><small>Planera insatser, redigera sektorer och hantera underlag.</small></button>
+      <button onClick={() => onSelect('user')}><strong>Användare</strong><small>Välj en aktiv insats och arbeta med underlag från extern GPS.</small></button>
+    </section>
+  </main>;
+}
+
+function InvestigationPicker({ role, investigations, name, error, onNameChange, onCreate, onSelect, onBack }: { role: AppRole; investigations: Investigation[]; name: string; error: string; onNameChange: (value: string) => void; onCreate: () => void; onSelect: (investigation: Investigation) => void; onBack: () => void }) {
+  const isAdmin = role === 'admin';
+  return <main className="selection-screen">
+    <header><h1>EFP sökledning</h1><span>{isAdmin ? 'Administratör' : 'Användare'}</span></header>
+    {error && <p className="error">{error}</p>}
+    <section className="investigation-picker">
+      <button className="selection-back" onClick={onBack}>← Byt läge</button>
+      <h2>Välj sökinsats</h2>
+      <p>{isAdmin ? 'Välj en befintlig sökinsats eller skapa en ny för att öppna karta och underlag.' : 'Välj en planerad eller aktiv sökinsats för att öppna användarläget.'}</p>
+      {isAdmin && <div className="investigation-create"><input value={name} onChange={event => onNameChange(event.target.value)} placeholder="Namn på ny sökinsats" /><button onClick={onCreate}>Skapa sökinsats</button></div>}
+      <div className="investigation-list">{investigations.length === 0 ? <p className="muted">Inga sökinsatser tillgängliga.</p> : investigations.map(item => <button onClick={() => onSelect(item)} key={item.id}>{item.name}<small>{investigationStatusLabel(item.status)}</small></button>)}</div>
+    </section>
+  </main>;
+}
+
+function RouteNotFound({ onHome }: { onHome: () => void }) {
+  return <main className="selection-screen"><section className="investigation-picker"><h2>Sidan kunde inte hittas</h2><p>Kontrollera länken eller välj ett gränssnitt igen.</p><button onClick={onHome}>Till startsidan</button></section></main>;
+}
+
+function UserInvestigationView({ investigation, onBack }: { investigation: Investigation; onBack: () => void }) {
+  const [sectors, setSectors] = useState<Sector[]>([]);
+  const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
+  const [callsign, setCallsign] = useState('');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [uploading, setUploading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${API}/investigations/${investigation.id}/sectors`).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
+    return () => { cancelled = true; };
+  }, [investigation.id]);
+  const uploadTracks = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+    if (!callsign.trim()) { setUploadMessage('Anropsnamn måste anges innan spår laddas upp.'); return; }
+    setUploading(true); setUploadMessage('Laddar upp…');
+    try {
+      for (const file of files) {
+        const form = new FormData(); form.append('file', file); form.append('callsign', callsign.trim());
+        const response = await fetch(`${API}/investigations/${investigation.id}/tracks/import?callsign=${encodeURIComponent(callsign.trim())}`, { method: 'POST', body: form });
+        if (!response.ok) throw new Error(`${file.name}: ${(await response.text()) || `HTTP ${response.status}`}`);
+      }
+      setUploadMessage(`${files.length} spår uppladdade.`);
+    } catch (cause) {
+      setUploadMessage(cause instanceof Error ? cause.message : 'Spåren kunde inte laddas upp.');
+    } finally { setUploading(false); }
+  };
+  const allSectorIds = sectors.map(sector => sector.id);
+  const allSectorsSelected = allSectorIds.length > 0 && selectedSectorIds.length === allSectorIds.length;
+  const toggleAllSectors = () => setSelectedSectorIds(allSectorsSelected ? [] : allSectorIds);
+  const toggleSector = (sectorId: string) => setSelectedSectorIds(current => current.includes(sectorId) ? current.filter(id => id !== sectorId) : [...current, sectorId]);
+  const exportSelection: ExportSelection = { sectorIds: selectedSectorIds };
+  return <main className="user-shell">
+    <header><h1>EFP sökledning</h1><span>Användarläge</span></header>
+    <section className="user-panel">
+      <button className="back-button" onClick={onBack}>← Byt sökinsats</button>
+      <h2>{investigation.name}</h2>
+      <p className="muted">{investigation.description || 'Planerade och aktiva sektorer för extern GPS-användning.'}</p>
+      <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={format.label} href={selectedSectorIds.length === 0 ? undefined : format.sectors(API, investigation.id, exportSelection)} onClick={event => { if (selectedSectorIds.length === 0) event.preventDefault(); }}>{format.label}</a>)}</div>{sectors.length > 0 && <p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p>}</section>
+      <section className="user-section"><h3>Ladda upp spår från extern GPS</h3><label>Anropsnamn<input value={callsign} onChange={event => setCallsign(event.target.value)} placeholder="Exempel: Alfa 1" /></label><input id="user-track-upload" className="file-input" type="file" accept=".gpx,application/gpx+xml" multiple onChange={event => void uploadTracks(event)} /><label className="file-button" htmlFor="user-track-upload">{uploading ? 'Laddar upp…' : 'Välj spårfiler'}</label>{uploadMessage && <p className="upload-message">{uploadMessage}</p>}</section>
+      <p className="muted user-scope-note">Användarläget visar endast planerade och aktiva insatser. QR-/kodanslutning införs i nästa steg.</p>
+    </section>
   </main>;
 }
 
@@ -468,16 +593,26 @@ function ReferencePointLayers({ referencePoints }: { referencePoints: ReferenceP
   return null;
 }
 
-function TrackLayers({ tracks, visibleTracks }: { tracks: Track[]; visibleTracks: Record<string, boolean> }) {
+function TrackLayers({ tracks, visibleTracks, selectedTrackId, onTrackSelect }: { tracks: Track[]; visibleTracks: Record<string, boolean>; selectedTrackId: string | null; onTrackSelect: (trackId: string) => void }) {
   const map = useMap();
+  const trackLayers = useRef<Record<string, L.Layer>>({});
   useEffect(() => {
     const group = L.layerGroup().addTo(map);
+    trackLayers.current = {};
     tracks.filter(track => visibleTracks[track.id] !== false).forEach(track => {
       const geometry = { ...track.geometry, coordinates: limitTrackCoordinates(track.geometry.coordinates) };
-      L.geoJSON({ type: 'Feature', properties: {}, geometry } as GeoJSON.Feature, { style: { color: '#7c3aed', weight: 4, opacity: 0.85 } }).addTo(group);
+      const layer = L.geoJSON({ type: 'Feature', properties: {}, geometry } as GeoJSON.Feature, { style: { color: track.id === selectedTrackId ? '#f59e0b' : '#7c3aed', weight: track.id === selectedTrackId ? 6 : 4, opacity: 0.85 } }).addTo(group);
+      layer.on('click', () => onTrackSelect(track.id));
+      trackLayers.current[track.id] = layer;
     });
     return () => { group.remove(); };
-  }, [map, tracks, visibleTracks]);
+  }, [map, tracks, visibleTracks, selectedTrackId, onTrackSelect]);
+  useEffect(() => {
+    if (!selectedTrackId) return;
+    const layer = trackLayers.current[selectedTrackId] as L.GeoJSON | undefined;
+    const bounds = layer?.getBounds?.();
+    if (bounds?.isValid?.()) map.fitBounds(bounds, { padding: [48, 48], maxZoom: 16, animate: true });
+  }, [map, selectedTrackId]);
   return null;
 }
 
@@ -517,9 +652,10 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
+  const isSectorLayer = (layer: any) => Boolean(layer.__sectorId || layer.__sector);
   const styleFor = (layer: any) => ({ color: layer.options?.color ?? '#2563eb', weight: layer.options?.weight ?? 4, dashArray: layer.options?.dashArray });
   const snapshot = (): DrawingSnapshot[] => {
-    const shapes = getLayers().map((layer: any) => {
+    const shapes = getLayers().filter(isSectorLayer).map((layer: any) => {
       const shape = layer instanceof L.Circle ? 'Circle' : layer.pm?.getShape?.() ?? layer.toGeoJSON().geometry.type;
       if (shape === 'Circle') return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, radius: layer.getRadius(), sectorId: layer.__sectorId, sector: layer.__sector, style: styleFor(layer) };
       return { kind: 'shape' as const, shape, geometry: layer.toGeoJSON().geometry, sectorId: layer.__sectorId, sector: layer.__sector, style: styleFor(layer) };
@@ -767,7 +903,11 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     onToolChange('none');
   };
   const saveChanges = async () => {
-    const layers = getLayers();
+    // Geoman can expose other map layers as well, including imported GPX
+    // tracks. Only layers explicitly marked as sectors may participate in
+    // sector persistence; tracks are immutable and are saved by the import
+    // endpoint instead.
+    const layers = getLayers().filter(isSectorLayer);
     const draftLayers = layers.filter((layer: any) => !layer.__sectorId && layer.__sector);
     const currentSectorIds = new Set<string>();
     const requests: { sectorName: string; request: Promise<Response> }[] = [];
