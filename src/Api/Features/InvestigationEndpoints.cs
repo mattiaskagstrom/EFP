@@ -32,6 +32,12 @@ public static class InvestigationEndpoints
             if (request.StartsAt.HasValue && request.EndsAt.HasValue && request.EndsAt < request.StartsAt)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["endsAt"] = ["Sluttiden måste vara efter starttiden."] });
             var item = new Investigation { Name = request.Name.Trim(), Description = request.Description, StartsAt = request.StartsAt, EndsAt = request.EndsAt, SearchConditions = request.SearchConditions, IsPublic = request.IsPublic };
+            if (!item.IsPublic)
+            {
+                item.AccessCode = AuthenticationEndpoints.GenerateAccessCode();
+                item.AccessCodeHash = AuthenticationEndpoints.HashAccessCode(item.AccessCode);
+                item.AccessCodeUpdatedAt = DateTimeOffset.UtcNow;
+            }
             var userId = http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(userId, out var ownerId)) { item.OwnerId = ownerId; item.Admins.Add(new InvestigationAdmin { AdminId = ownerId, IsOwner = true }); }
             db.Investigations.Add(item); await db.SaveChangesAsync(ct);
@@ -48,7 +54,22 @@ public static class InvestigationEndpoints
             if (request.EndsAt.HasValue) item.EndsAt = request.EndsAt;
             if (request.SearchConditions is not null) item.SearchConditions = request.SearchConditions;
             if (request.Status is not null) item.Status = request.Status.Value;
-            if (request.IsPublic.HasValue) item.IsPublic = request.IsPublic.Value;
+            if (request.IsPublic.HasValue && request.IsPublic.Value != item.IsPublic)
+            {
+                item.IsPublic = request.IsPublic.Value;
+                if (item.IsPublic)
+                {
+                    item.AccessCode = null;
+                    item.AccessCodeHash = null;
+                    item.AccessCodeUpdatedAt = null;
+                }
+                else if (string.IsNullOrWhiteSpace(item.AccessCode))
+                {
+                    item.AccessCode = AuthenticationEndpoints.GenerateAccessCode();
+                    item.AccessCodeHash = AuthenticationEndpoints.HashAccessCode(item.AccessCode);
+                    item.AccessCodeUpdatedAt = DateTimeOffset.UtcNow;
+                }
+            }
             if (item.StartsAt.HasValue && item.EndsAt.HasValue && item.EndsAt < item.StartsAt)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["endsAt"] = ["Sluttiden måste vara efter starttiden."] });
             item.UpdatedAt = DateTimeOffset.UtcNow; await db.SaveChangesAsync(ct);

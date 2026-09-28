@@ -34,6 +34,11 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(paths.TryGetProperty("/api/v1/investigations", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/sectors", out _));
         Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/tracks/import", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings/{findingId}", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/access-code", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/access-code/rotate", out _));
+        Assert.True(paths.TryGetProperty("/api/v1/investigations/{investigationId}/findings.geojson", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/admin/login", out _));
         Assert.True(paths.TryGetProperty("/api/v1/auth/user/connect", out _));
         Assert.True(paths.TryGetProperty("/api/v1/admin/user-sessions", out _));
@@ -187,6 +192,10 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     {
         var create = await client.PostAsJsonAsync("/api/v1/investigations", new { name = "Privat kontraktinsats", isPublic = false });
         var investigation = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var automaticCodeResponse = await client.GetAsync($"/api/v1/investigations/{investigation}/access-code");
+        Assert.Equal(HttpStatusCode.OK, automaticCodeResponse.StatusCode);
+        var automaticCode = (await automaticCodeResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(automaticCode));
         var denied = await client.PostAsJsonAsync("/api/v1/auth/user/connect", new { investigationId = investigation, callsign = "Bravo", code = "ABCDEFGH" });
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
 
@@ -251,6 +260,20 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var track = Assert.Single(history.EnumerateArray());
         Assert.Equal("alfa.gpx", track.GetProperty("sourceFile").GetString());
         Assert.Equal("POD noterad vid avslut.", track.GetProperty("notes").GetString());
+
+        var sectorCreate = await client.PostAsJsonAsync($"/api/v1/investigations/{investigation}/sectors", new
+        {
+            name = "Norra sektorn",
+            status = "NotStarted",
+            searchMethod = "Patrol",
+            priority = 1,
+            geometry = new { type = "Polygon", coordinates = new[] { new[] { 17.999, 58.999 }, new[] { 18.002, 58.999 }, new[] { 17.999, 59.002 } } },
+        });
+        sectorCreate.EnsureSuccessStatusCode();
+        var sectorId = (await sectorCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var selectedTracks = await client.GetAsync($"/api/v1/investigations/{investigation}/tracks.geojson?sectorIds={sectorId}");
+        Assert.Equal(HttpStatusCode.OK, selectedTracks.StatusCode);
+        Assert.Contains(track.GetProperty("id").GetGuid().ToString(), await selectedTracks.Content.ReadAsStringAsync());
     }
 
     [Fact]

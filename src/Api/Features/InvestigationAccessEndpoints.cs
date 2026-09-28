@@ -10,6 +10,7 @@ public static class InvestigationAccessEndpoints
     public static IEndpointRouteBuilder MapInvestigationAccessEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/investigations/{investigationId:guid}").RequireAuthorization("Admin");
+        group.MapGet("/access-code", GetCodeAsync);
         group.MapPost("/access-code/rotate", RotateCodeAsync);
         group.MapGet("/admins", ListAdminsAsync);
         group.MapPost("/admins", AddAdminAsync);
@@ -29,12 +30,31 @@ public static class InvestigationAccessEndpoints
     {
         if (!await CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
         var investigation = await db.Investigations.FirstAsync(x => x.Id == investigationId, ct);
+        if (investigation.IsPublic) return Results.Conflict("Publika insatser använder ingen anslutningskod.");
         var code = AuthenticationEndpoints.GenerateAccessCode();
         investigation.AccessCodeHash = AuthenticationEndpoints.HashAccessCode(code);
+        investigation.AccessCode = code;
         investigation.AccessCodeVersion++;
         investigation.AccessCodeUpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok(new { code, version = investigation.AccessCodeVersion });
+    }
+
+    private static async Task<IResult> GetCodeAsync(Guid investigationId, EfpDbContext db, HttpContext http, CancellationToken ct)
+    {
+        if (!await CanManageAsync(investigationId, http, db, ct)) return Results.Forbid();
+        var investigation = await db.Investigations.FirstOrDefaultAsync(x => x.Id == investigationId, ct);
+        if (investigation is null) return Results.NotFound();
+        if (investigation.IsPublic) return Results.NotFound();
+        if (string.IsNullOrWhiteSpace(investigation.AccessCode))
+        {
+            var code = AuthenticationEndpoints.GenerateAccessCode();
+            investigation.AccessCodeHash = AuthenticationEndpoints.HashAccessCode(code);
+            investigation.AccessCode = code;
+            investigation.AccessCodeUpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        return Results.Ok(new { code = investigation.AccessCode, version = investigation.AccessCodeVersion });
     }
 
     private static async Task<IResult> ListAdminsAsync(Guid investigationId, EfpDbContext db, HttpContext http, CancellationToken ct)

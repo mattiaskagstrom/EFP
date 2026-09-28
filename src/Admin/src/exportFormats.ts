@@ -2,11 +2,13 @@ export type ExportFormat = {
   label: string;
   sectors: (api: string, investigationId: string, selection?: ExportSelection) => string;
   tracks: (api: string, investigationId: string, selection?: ExportSelection) => string;
+  findings: (api: string, investigationId: string, selection?: ExportSelection) => string;
 };
 
 export type ExportSelection = {
   sectorIds?: string[];
   trackIds?: string[];
+  findingIds?: string[];
   from?: string;
   to?: string;
 };
@@ -16,6 +18,7 @@ function addSelection(url: string, selection?: ExportSelection): string {
   const query = new URLSearchParams();
   selection.sectorIds?.forEach(id => query.append('sectorIds', id));
   selection.trackIds?.forEach(id => query.append('trackIds', id));
+  selection.findingIds?.forEach(id => query.append('findingIds', id));
   if (selection.from) query.set('from', selection.from);
   if (selection.to) query.set('to', selection.to);
   const queryString = query.toString();
@@ -27,15 +30,18 @@ export const exportFormats: ExportFormat[] = [
     label: 'GPX',
     sectors: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/sectors.gpx`, selection),
     tracks: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/tracks.gpx`, selection),
+    findings: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/findings.gpx`, selection),
   },
   {
     label: 'Garmin GPX',
     sectors: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/sectors.garmin.gpx`, selection),
     tracks: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/tracks.garmin.gpx`, selection),
+    findings: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/findings.garmin.gpx`, selection),
   },
   {
     label: 'GeoJSON',
     sectors: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/sectors.geojson`, selection),
     tracks: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/tracks.geojson`, selection),
+    findings: (api, investigationId, selection) => addSelection(`${api}/investigations/${investigationId}/findings.geojson`, selection),
   },
 ];

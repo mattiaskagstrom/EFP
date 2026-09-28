@@ -81,9 +81,30 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "AssignedGroup" text NULL;
         ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "SectorId" uuid NULL;
         ALTER TABLE "Tracks" ADD COLUMN IF NOT EXISTS "Notes" text NULL;
+        CREATE TABLE IF NOT EXISTS "Findings" (
+            "Id" uuid NOT NULL PRIMARY KEY,
+            "InvestigationId" uuid NOT NULL REFERENCES "Investigations" ("Id") ON DELETE CASCADE,
+            "SubmittedBy" text NOT NULL,
+            "Name" text NULL,
+            "Description" text NULL,
+            "ObservedAt" timestamp with time zone NOT NULL,
+            "SubmittedAt" timestamp with time zone NOT NULL,
+            "ImageContentType" text NOT NULL,
+            "ImageFileName" text NOT NULL,
+            "ImageData" bytea NOT NULL,
+            "Geometry" geometry(Point, 4326) NOT NULL,
+            "IsDeleted" boolean NOT NULL DEFAULT FALSE,
+            "DeletedAt" timestamp with time zone NULL
+        );
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "DeletedAt" timestamp with time zone NULL;
+        ALTER TABLE "Findings" ADD COLUMN IF NOT EXISTS "Name" text NULL;
+        CREATE INDEX IF NOT EXISTS "IX_Findings_InvestigationId" ON "Findings" ("InvestigationId");
+        CREATE INDEX IF NOT EXISTS "IX_Findings_Geometry" ON "Findings" USING gist ("Geometry");
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "SearchConditions" text NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "IsPublic" boolean NOT NULL DEFAULT TRUE;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeHash" text NULL;
+        ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCode" text NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeVersion" integer NOT NULL DEFAULT 1;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "AccessCodeUpdatedAt" timestamp with time zone NULL;
         ALTER TABLE "Investigations" ADD COLUMN IF NOT EXISTS "OwnerId" uuid NULL;
@@ -126,6 +147,7 @@ app.MapSectorEndpoints();
 app.MapReferencePointEndpoints();
 app.MapInvestigationMapEndpoints();
 app.MapImportExportEndpoints();
+app.MapFindingEndpoints();
 app.Run();
 
 public partial class Program { }

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
-import { ImageOverlay, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, ImageOverlay, MapContainer, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { featureCollection } from '@turf/helpers';
 import polygonToLine from '@turf/polygon-to-line';
@@ -21,15 +21,16 @@ import { validateTrackFile } from './trackUpload';
 type Investigation = { id: string; name: string; status: string; isPublic?: boolean; description?: string | null; startsAt?: string | null; endsAt?: string | null; searchConditions?: string | null };
 type InvestigationAdmin = { id: string; username: string; isOwner: boolean; createdAt: string };
 type ReferencePoint = { id: string; type: 'Pls' | 'Lkp' | 'Ipp'; label: string; longitude: number; latitude: number };
+type Finding = { id: string; name?: string | null; submittedBy: string; description?: string | null; observedAt: string; submittedAt: string; hasImage?: boolean; imageUrl?: string | null; longitude: number; latitude: number };
 type Sector = { id: string; name: string; status: string; priority: number; searched: boolean; searchedAt?: string | null; points: number; showName: boolean; showArea: boolean; poa?: number | null; areaKm2?: number; lengthKm?: number; geometry: { type?: 'Polygon' | 'LineString'; coordinates: number[][] } };
 type InvestigationMap = { id: string; name: string; contentType: string; west: number; south: number; east: number; north: number; imageUrl: string };
 type DrawMode = 'Polygon' | 'Rectangle' | 'Circle' | 'Line';
-type ActiveTool = 'none' | DrawMode | 'Text' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
+type ActiveTool = 'none' | DrawMode | 'Text' | 'Finding' | 'Pls' | 'Lkp' | 'Ipp' | 'Edit' | 'Drag' | 'Remove' | 'Split' | 'Merge';
 type MapType = 'osm' | 'topographic' | 'satellite';
 type StrokeStyle = 'solid' | 'dash' | 'dot' | 'dashdot';
 type DrawingSnapshot = { kind: 'shape' | 'text'; shape?: string; geometry?: GeoJSON.Geometry; radius?: number; sectorId?: string; sector?: Partial<Sector>; style?: { color: string; weight: number; dashArray?: string }; text?: string; lat?: number; lng?: number };
 type SectorDetails = Pick<Sector, 'name' | 'searched' | 'searchedAt' | 'points' | 'showName' | 'showArea' | 'poa'>;
-type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
+type EditorApi = { draw: (mode: DrawMode) => void; text: () => void; edit: () => void; drag: () => void; remove: () => void; removeSector: (sectorId: string) => void; getInvalidSectorIds: () => string[]; split: () => void; merge: () => void; placeReferencePoint: (type: ReferencePoint['type']) => void; placeFinding: () => void; stop: () => void; undo: () => void; redo: () => void; save: () => Promise<void>; discard: () => void; updateSectorDetails: (sectorId: string, details: SectorDetails) => void; simplifySector: (sectorId: string, toleranceMeters: number) => void; latestPolygon: () => number[][] | null; canUndo: () => boolean; canRedo: () => boolean };
 
 const API = import.meta.env.VITE_API_URL ?? '/api/v1';
 // Admin cookies must be sent in local development where the API and Vite use
@@ -41,6 +42,8 @@ const strokeMap: Record<StrokeStyle, string | undefined> = { solid: undefined, d
 const toDateTimeLocal = (value?: string | null) => value ? new Date(value).toISOString().slice(0, 16) : '';
 const formatDateTime = (value: string) => value ? new Date(value).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : '';
 const investigationStatusLabel = (status: string) => ({ Planned: 'Planerad', Active: 'Aktiv', Paused: 'Pausad', Closed: 'Avslutad', Archived: 'Arkiverad' }[status] ?? status);
+type AdminIdentity = { id: string; userName: string; roles: string[] };
+const normalizeAdminIdentity = (value: any): AdminIdentity | null => value ? { id: String(value.id), userName: value.userName ?? '', roles: Array.isArray(value.roles) ? value.roles : value.role ? [value.role] : [] } : null;
 
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
@@ -48,6 +51,7 @@ function App() {
   const [investigationsLoaded, setInvestigationsLoaded] = useState(false);
   const [selected, setSelected] = useState<Investigation | null>(null);
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
   const [ownMaps, setOwnMaps] = useState<InvestigationMap[]>([]);
   const [visibleOwnMaps, setVisibleOwnMaps] = useState<Record<string, boolean>>({});
@@ -67,6 +71,9 @@ function App() {
   const [checkedSectorIds, setCheckedSectorIds] = useState<string[]>([]);
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
   const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
+  const [findingImages, setFindingImages] = useState<Record<string, File | null>>({});
   const [simplifyTolerance, setSimplifyTolerance] = useState(5);
   const [hiddenSectorIds, setHiddenSectorIds] = useState<Record<string, boolean>>({});
   const [invalidSectorIds, setInvalidSectorIds] = useState<string[]>([]);
@@ -76,6 +83,7 @@ function App() {
   const [saveConfirmation, setSaveConfirmation] = useState(false);
   const [exportSectorIds, setExportSectorIds] = useState<string[]>([]);
   const [exportTrackIds, setExportTrackIds] = useState<string[]>([]);
+  const [exportFindingIds, setExportFindingIds] = useState<string[]>([]);
   const [exportFrom, setExportFrom] = useState('');
   const [exportTo, setExportTo] = useState('');
   const [investigationDraft, setInvestigationDraft] = useState({ name: '', description: '', startsAt: '', endsAt: '', searchConditions: '', isPublic: true });
@@ -94,7 +102,7 @@ function App() {
     setInvestigationsLoaded(true);
   };
   useEffect(() => {
-    void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(identity); setAuthChecked(true); }).catch(() => setAuthChecked(true));
+    void fetch(`${API}/auth/admin/me`).then(response => response.ok ? response.json() : null).then(identity => { setAdminIdentity(normalizeAdminIdentity(identity)); setAuthChecked(true); }).catch(() => setAuthChecked(true));
   }, []);
   useEffect(() => { if (authChecked && (route.kind !== 'investigation-list' || route.role !== 'admin' || adminIdentity)) void load(); }, [authChecked, route.kind, 'role' in route ? route.role : undefined, adminIdentity]);
   useEffect(() => {
@@ -120,16 +128,18 @@ function App() {
     return () => { cancelled = true; };
   }, [route, investigations, investigationsLoaded]);
   const loadSelectedData = async (investigation: Investigation) => {
-    const [sectorResponse, trackResponse, referencePointResponse, mapResponse] = await Promise.all([
+    const [sectorResponse, trackResponse, referencePointResponse, mapResponse, findingResponse] = await Promise.all([
       fetch(`${API}/investigations/${investigation.id}/sectors`),
       fetch(`${API}/investigations/${investigation.id}/tracks.geojson`),
       fetch(`${API}/investigations/${investigation.id}/reference-points`),
       fetch(`${API}/investigations/${investigation.id}/maps`),
+      fetch(`${API}/investigations/${investigation.id}/findings`),
     ]);
     const loadedSectors = sectorResponse.ok ? await sectorResponse.json() : [];
     const trackCollection = trackResponse.ok ? await trackResponse.json() : { features: [] };
     const loadedReferencePoints = referencePointResponse.ok ? await referencePointResponse.json() : [];
     const loadedMaps = mapResponse.ok ? await mapResponse.json() : [];
+    const loadedFindings = findingResponse.ok ? await findingResponse.json() : [];
     const loadedTracks = (trackCollection.features ?? []).filter((feature: any) => feature?.geometry?.type === 'LineString' && Array.isArray(feature.geometry.coordinates)).map((feature: any) => ({
       id: String(feature.id),
       callsign: feature.properties?.callsign,
@@ -142,15 +152,18 @@ function App() {
     }));
     setSectorDrafts(Object.fromEntries(loadedSectors.map((sector: Sector) => [sector.id, { name: sector.name, searched: sector.searched, searchedAt: sector.searchedAt ?? null, points: sector.points, showName: sector.showName, showArea: sector.showArea, poa: sector.poa ?? null }])));
     setTracks(loadedTracks);
+    setFindings(loadedFindings);
     setReferencePoints(loadedReferencePoints);
     setOwnMaps(loadedMaps);
     setVisibleOwnMaps(Object.fromEntries(loadedMaps.map((map: InvestigationMap) => [map.id, true])));
     setVisibleTracks(Object.fromEntries(loadedTracks.map(track => [track.id, true])));
     setSelectedTrackId(null);
     setExpandedTrackId(null);
+    setSelectedFindingId(null);
+    setExpandedFindingId(null);
     setCheckedSectorIds([]);
   };
-  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
+  useEffect(() => { setAccessCode(''); setInvestigationAdmins([]); setAdminUsernameToAdd(''); setAdminAccessError(''); setHiddenSectorIds({}); setInvalidSectorIds([]); setSectorsExpanded(true); setTracksExpanded(true); setSectorSearch(''); setExportSectorIds([]); setExportTrackIds([]); setExportFindingIds([]); setExportFrom(''); setExportTo(''); setOwnMaps([]); setVisibleOwnMaps({}); setFindingImages({}); if (selected) { setInvestigationDraft({ name: selected.name, description: selected.description ?? '', startsAt: toDateTimeLocal(selected.startsAt), endsAt: toDateTimeLocal(selected.endsAt), searchConditions: selected.searchConditions ?? '', isPublic: selected.isPublic !== false }); void loadSelectedData(selected); void loadInvestigationAdmins(selected.id); if (selected.isPublic === false) void loadAccessCode(selected.id); } else { setSectors([]); setReferencePoints([]); setSectorDrafts({}); setTracks([]); setFindings([]); setVisibleTracks({}); setEditor(null); setSelectedSectorId(null); setExpandedSectorId(null); } }, [selected]);
   useEffect(() => { document.getElementById('gpx-track-import')?.setAttribute('multiple', 'multiple'); }, [selected]);
   useEffect(() => { if (editor) setInvalidSectorIds(editor.getInvalidSectorIds()); }, [editor, sectors]);
   useEffect(() => {
@@ -197,7 +210,9 @@ function App() {
     };
     window.addEventListener('efp:sector-created', onSectorCreated);
     window.addEventListener('efp:sector-removed', onSectorRemoved);
-    return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); };
+    const onFindingPlaced = (event: Event) => { const finding = (event as CustomEvent<{ draftId: string; latitude: number; longitude: number }>).detail; if (finding) addFindingAt(finding.latitude, finding.longitude, finding.draftId); };
+    window.addEventListener('efp:finding-placed', onFindingPlaced);
+    return () => { window.removeEventListener('efp:sector-created', onSectorCreated); window.removeEventListener('efp:sector-removed', onSectorRemoved); window.removeEventListener('efp:finding-placed', onFindingPlaced); };
   }, []);
 
   useEffect(() => {
@@ -227,6 +242,43 @@ function App() {
     setName(''); await load(); selectInvestigation(created, 'admin');
   };
   const go = (path: string) => navigateTo(path);
+  const addFindingAt = (latitude: number, longitude: number, draftId = `draft-finding-${Date.now()}`) => {
+    const id = draftId;
+    setFindings(current => [{ id, name: '', submittedBy: adminIdentity?.userName ?? 'Admin', description: '', observedAt: new Date().toISOString(), submittedAt: new Date().toISOString(), imageUrl: '', longitude, latitude }, ...current]);
+    setFindingImages(current => ({ ...current, [id]: null }));
+  };
+  const updateFinding = (id: string, patch: Partial<Finding>) => setFindings(current => current.map(finding => finding.id === id ? { ...finding, ...patch } : finding));
+  const selectFinding = (id: string) => { setSelectedFindingId(id); setExpandedFindingId(id); };
+  const deleteFinding = async (finding: Finding) => {
+    if (finding.id.startsWith('draft-')) {
+      setFindings(current => current.filter(item => item.id !== finding.id));
+      setFindingImages(current => { const next = { ...current }; delete next[finding.id]; return next; });
+      setSelectedFindingId(current => current === finding.id ? null : current);
+      setExpandedFindingId(current => current === finding.id ? null : current);
+      window.dispatchEvent(new CustomEvent('efp:finding-deleted', { detail: finding.id }));
+      return;
+    }
+    if (!selected || !window.confirm('Radera fyndet?')) return;
+    const response = await fetch(`${API}/investigations/${selected.id}/findings/${finding.id}`, { method: 'DELETE' });
+    if (!response.ok) { setError((await response.text()) || 'Fyndet kunde inte raderas.'); return; }
+    setFindings(current => current.filter(item => item.id !== finding.id));
+    setSelectedFindingId(current => current === finding.id ? null : current);
+    setExpandedFindingId(current => current === finding.id ? null : current);
+    window.dispatchEvent(new CustomEvent('efp:finding-deleted', { detail: finding.id }));
+  };
+  const saveFinding = async (finding: Finding) => {
+    if (!selected) return;
+    const form = new FormData(); form.append('name', finding.name ?? ''); form.append('latitude', String(finding.latitude)); form.append('longitude', String(finding.longitude)); form.append('observedAt', new Date(finding.observedAt).toISOString()); form.append('description', finding.description ?? '');
+    const image = findingImages[finding.id]; if (image) form.append('image', image);
+    const isDraft = finding.id.startsWith('draft-');
+    const response = await fetch(`${API}/investigations/${selected.id}/findings${isDraft ? '' : `/${finding.id}`}`, { method: isDraft ? 'POST' : 'PATCH', body: form });
+    if (!response.ok) { setError((await response.text()) || 'Fyndet kunde inte sparas.'); return; }
+    const saved = await response.json() as Finding;
+    setFindings(current => current.map(item => item.id === finding.id ? saved : item));
+    window.dispatchEvent(new CustomEvent('efp:finding-saved', { detail: { draftId: finding.id, finding: saved } }));
+    setFindingImages(current => { const next = { ...current }; delete next[finding.id]; return next; });
+    setError('');
+  };
   const selectInvestigation = (investigation: Investigation, role: AppRole) => {
     setSelected(investigation);
     go(investigationPath(role, investigation.id));
@@ -338,6 +390,12 @@ function App() {
     if (expandedSectorId === sector.id) setExpandedSectorId(null);
     await loadSelectedData(selected);
   };
+  const loadAccessCode = async (investigationId: string) => {
+    const response = await fetch(`${API}/investigations/${investigationId}/access-code`);
+    if (!response.ok) return;
+    const result = await response.json() as { code?: string };
+    setAccessCode(result.code ?? '');
+  };
   const rotateAccessCode = async () => {
     if (!selected) return;
     const response = await fetch(`${API}/investigations/${selected.id}/access-code/rotate`, { method: 'POST' });
@@ -434,6 +492,7 @@ function App() {
   const exportSelection: ExportSelection = {
     sectorIds: exportSectorIds,
     trackIds: exportTrackIds,
+    findingIds: exportFindingIds,
     from: exportFrom ? new Date(exportFrom).toISOString() : undefined,
     to: exportTo ? new Date(exportTo).toISOString() : undefined,
   };
@@ -465,9 +524,9 @@ function App() {
 
   if (route.kind === 'not-found') return <RouteNotFound onHome={() => go('/')} />;
   if (route.kind === 'role-picker') return <RolePicker onSelect={role => go(`/${role}`)} />;
-  if (route.kind === 'superadmin-system' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); }} onBack={() => go('/')} />;
+  if (route.kind === 'superadmin-system' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(normalizeAdminIdentity(identity)); }} onBack={() => go('/')} />;
   if (route.kind === 'superadmin-system') return <SuperadminSystemView onBack={() => go('/admin')} />;
-  if ('role' in route && route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(identity); void load(); }} onBack={() => go('/')} />;
+  if ('role' in route && route.role === 'admin' && authChecked && !adminIdentity) return <AdminAuthView onAuthenticated={identity => { setAdminIdentity(normalizeAdminIdentity(identity)); void load(); }} onBack={() => go('/')} />;
   if (!selected) {
     const visibleInvestigations = route.role === 'user' ? investigations.filter(item => ['Planned', 'Active'].includes(item.status)) : investigations;
     return <InvestigationPicker role={route.role} investigations={visibleInvestigations} name={name} error={error} onNameChange={setName} onCreate={() => void createInvestigation()} onSelect={item => selectInvestigation(item, route.role)} onBack={() => go('/')} />;
@@ -475,14 +534,14 @@ function App() {
   if (route.role === 'user') return <UserInvestigationView investigation={selected} onBack={() => go('/user')} />;
 
   return <main className="app-shell">
-    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span>{adminIdentity?.roles.includes('Superadmin') && <button className="header-action" onClick={() => go('/admin/system')}>Systemöversikt</button>}<button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
+    <header><h1>EFP sökledning</h1><span>Administratör · {adminIdentity?.userName}</span>{adminIdentity?.roles?.includes('Superadmin') && <button className="header-action" onClick={() => go('/admin/system')}>Systemöversikt</button>}<button className="header-action" onClick={() => { void fetch(`${API}/auth/admin/logout`, { method: 'POST' }); setAdminIdentity(null); setSelected(null); go('/'); }}>Logga ut</button></header>
     {error && <p className="error">{error}</p>}
     <InvestigationInlineSettingsV2 investigation={selected} draft={investigationDraft} saving={investigationSaving} onDraftChange={setInvestigationDraft} onSave={() => void saveInvestigation()} onStatusChange={status => void changeInvestigationStatus(status)} />
     <div className="layout">
       <aside className="investigation-sidebar">
         <button className="back-button" onClick={() => { if (!editor?.canUndo() || window.confirm('Du har osparade ändringar. Vill du lämna sidan utan att spara?')) { setSelected(null); go('/admin'); } }}>← Byt sökinsats</button>
         <section className="sidebar-section"><h3>Kartändringar</h3><button onClick={() => void saveMapChanges()}>{saveConfirmation ? '✓ Sparat' : '💾 Spara ändringar'}</button><button className="discard-button" onClick={() => void discardMapChanges()}>↶ Släng ändringar</button>{invalidSectorIdSet.size > 0 && <button className="danger-button invalid-sector-action" onClick={removeInvalidSectors}>⌫ Radera {invalidSectorIdSet.size} ogiltiga sektorer</button>}</section>
-        <section className="sidebar-section access-section"><h3>Anslutning</h3><p className="muted">{selected.isPublic === false ? 'Privat insats – kod krävs.' : 'Publik insats – syns i användarlistan.'}</p><button type="button" onClick={() => void rotateAccessCode()}>{accessCode ? 'Skapa ny kod' : 'Skapa insatskod'}</button>{accessCode && <><strong className="access-code">{accessCode}</strong><small>Koden visas bara efter att den skapats. Gamla användarsessioner är nu ogiltiga.</small><button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}/user/investigations/${selected.id}?code=${accessCode}`)}>Kopiera anslutningslänk</button></>}</section>
+        {selected.isPublic === false && <section className="sidebar-section access-section"><h3>Anslutning</h3><p className="muted">Privat insats – kod krävs.</p><button type="button" onClick={() => void rotateAccessCode()}>Byt anslutningskod</button>{accessCode && <><strong className="access-code">{accessCode}</strong><small>Koden gäller tills den byts ut. Då ogiltigförklaras gamla användarsessioner.</small><button type="button" onClick={() => void navigator.clipboard?.writeText(`${window.location.origin}/user/investigations/${selected.id}?code=${accessCode}`)}>Kopiera anslutningslänk</button></>}</section>}
         <details className="sidebar-section collapsible-sidebar-section"><summary>Insatsadmins</summary><div className="collapsible-sidebar-content"><p className="muted">Admins som kan se och hantera denna insats.</p><ul className="admin-members-list">{investigationAdmins.map(admin => <li key={admin.id}><span>{admin.username}{admin.isOwner ? ' (ägare)' : ''}</span>{!admin.isOwner && <button type="button" className="danger-button" onClick={() => void removeInvestigationAdmin(admin)}>Ta bort</button>}</li>)}</ul><div className="admin-member-add"><input value={adminUsernameToAdd} onChange={event => setAdminUsernameToAdd(event.target.value)} placeholder="Befintligt användarnamn" aria-label="Admin-användarnamn" /><button type="button" onClick={() => void addInvestigationAdmin()} disabled={!adminUsernameToAdd.trim()}>Lägg till Admin</button></div>{adminAccessError && <p className="error">{adminAccessError}</p>}</div></details>
         <section className="sidebar-section sectors-section">
           <button className="sectors-section-toggle" onClick={() => setSectorsExpanded(current => !current)}><h3>Sektorer</h3><span aria-hidden="true">{sectorsExpanded ? '▾' : '▸'}</span></button>
@@ -497,11 +556,12 @@ function App() {
             })}</div></>}
         </section>
         <section className="sidebar-section tracks-section"><button type="button" className="tracks-section-toggle" aria-expanded={tracksExpanded} onClick={() => setTracksExpanded(current => !current)}><h3>Importerade spår</h3><span aria-hidden="true">{tracksExpanded ? '▾' : '▸'}</span></button>{tracksExpanded && <TrackList tracks={tracks} visibleTracks={visibleTracks} onVisibleChange={(trackId, visible) => setVisibleTracks(current => ({ ...current, [trackId]: visible }))} selectedTrackId={selectedTrackId} expandedTrackId={expandedTrackId} onSelect={setSelectedTrackId} onToggleExpanded={trackId => setExpandedTrackId(current => current === trackId ? null : trackId)} onUpdatePod={(track, value) => { void updateTrackPod(track, value); }} />}</section>
+        <FindingList findings={findings} imageFiles={findingImages} selectedFindingId={selectedFindingId} expandedFindingId={expandedFindingId} onToggleExpanded={id => { setSelectedFindingId(id); setExpandedFindingId(current => current === id ? null : id); }} onImageChange={(id, file) => setFindingImages(current => ({ ...current, [id]: file }))} onChange={updateFinding} onSave={finding => void saveFinding(finding)} onDelete={finding => void deleteFinding(finding)} />
         <details className="sidebar-section own-maps-section"><summary>Egna kartor</summary><div className="own-map-upload"><label>Västlig longitud<input type="number" step="any" value={mapBounds.west} onChange={event => setMapBounds(current => ({ ...current, west: event.target.value }))} /></label><label>Sydlig latitud<input type="number" step="any" value={mapBounds.south} onChange={event => setMapBounds(current => ({ ...current, south: event.target.value }))} /></label><label>Östlig longitud<input type="number" step="any" value={mapBounds.east} onChange={event => setMapBounds(current => ({ ...current, east: event.target.value }))} /></label><label>Nordlig latitud<input type="number" step="any" value={mapBounds.north} onChange={event => setMapBounds(current => ({ ...current, north: event.target.value }))} /></label><input id="own-map-upload" className="file-input" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={event => void uploadOwnMap(event)} /><label className="file-button" htmlFor="own-map-upload">Ladda upp kartbild</label></div>{ownMaps.length === 0 ? <p className="muted">Inga egna kartor uppladdade.</p> : <div className="own-map-list">{ownMaps.map(map => <div className="own-map-item" key={map.id}><label><input type="checkbox" checked={visibleOwnMaps[map.id] ?? true} onChange={event => setVisibleOwnMaps(current => ({ ...current, [map.id]: event.target.checked }))} /> {map.name}</label><button type="button" className="danger-button" onClick={() => void deleteOwnMap(map)}>Radera</button></div>)}</div>}</details>
-        <ExportPanel sectors={sectors} tracks={tracks} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} />
+        <ExportPanel sectors={sectors} tracks={tracks} findings={findings} selection={{ sectorIds: exportSectorIds, trackIds: exportTrackIds, findingIds: exportFindingIds, from: exportFrom, to: exportTo }} onSectorIdsChange={setExportSectorIds} onTrackIdsChange={setExportTrackIds} onFindingIdsChange={setExportFindingIds} onFromChange={setExportFrom} onToChange={setExportTo} getSectorUrl={format => format.sectors(API, selected.id, exportSelection)} getTrackUrl={format => format.tracks(API, selected.id, exportSelection)} getFindingUrl={format => format.findings(API, selected.id, exportSelection)} />
         <details className="sidebar-section import-section"><summary>Importera</summary><div className="import-links"><section><h3>Importera sektorer från GPX</h3><input id="gpx-sector-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importSectorGpx(event)} /><label className="file-button" htmlFor="gpx-sector-import">Välj sektor-GPX-fil</label></section><section><h3>Importera spår från GPX</h3><input id="gpx-track-import" className="file-input" type="file" accept=".gpx,application/gpx+xml" onChange={event => void importGpx(event)} /><label className="file-button" htmlFor="gpx-track-import">Välj spår-GPX-fil</label></section></div></details>
       </aside>
-      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} />{ownMaps.filter(map => visibleOwnMaps[map.id] !== false).map(map => <ImageOverlay key={map.id} url={`${API.replace(/\/api\/v1$/, '')}${map.imageUrl}`} bounds={[[map.south, map.west], [map.north, map.east]]} opacity={0.8} />)}<TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
+      <div className={`map map-cursor-${activeTool.toLowerCase()}`}><MapContainer key={selected.id} center={center} zoom={10} scrollWheelZoom><TileLayer attribution={selectedMapLayer.attribution} url={selectedMapLayer.url} />{ownMaps.filter(map => visibleOwnMaps[map.id] !== false).map(map => <ImageOverlay key={map.id} url={`${API.replace(/\/api\/v1$/, '')}${map.imageUrl}`} bounds={[[map.south, map.west], [map.north, map.east]]} opacity={0.8} />)}<TrackLayers tracks={tracks} visibleTracks={visibleTracks} selectedTrackId={selectedTrackId} onTrackSelect={trackId => { setSelectedTrackId(trackId); setExpandedTrackId(trackId); }} /><MapEditor investigationId={selected.id} color={color} strokeStyle={strokeStyle} sectors={sectors} nextSectorName={nextSectorName} activeTool={activeTool} onToolChange={setActiveTool} selectedSectorId={selectedSectorId} hiddenSectorIds={hiddenSectorIds} onSectorSelect={sectorId => { setSelectedSectorId(sectorId); setExpandedSectorId(sectorId); }} selectedFindingId={selectedFindingId} onFindingSelect={selectFinding} onReady={api => setEditor({ ...api })} /></MapContainer><div className="map-type-control"><label htmlFor="map-type">Karttyp</label><select id="map-type" value={mapType} onChange={event => setMapType(event.target.value as MapType)}><option value="osm">Standard</option><option value="topographic">Topografisk</option><option value="satellite">Satellit</option></select></div><div className="map-toolbar" aria-label="Ritverktyg"><button className={activeTool === 'Polygon' ? 'active' : ''} onClick={() => chooseTool('Polygon', () => editor?.draw('Polygon'))}>⬡ Polygon</button><button className={activeTool === 'Rectangle' ? 'active' : ''} onClick={() => chooseTool('Rectangle', () => editor?.draw('Rectangle'))}>▣ Polygon</button><button className={activeTool === 'Circle' ? 'active' : ''} onClick={() => chooseTool('Circle', () => editor?.draw('Circle'))}>◯ Cirkel</button><button className={activeTool === 'Line' ? 'active' : ''} onClick={() => chooseTool('Line', () => editor?.draw('Line'))}>╱ Sträcka</button><button className={activeTool === 'Text' ? 'active' : ''} onClick={() => chooseTool('Text', () => editor?.text())}>T Text</button><label>Färg <input className="color-input" type="color" value={color} onChange={event => setColor(event.target.value)} /></label><label>Linje <select value={strokeStyle} onChange={event => setStrokeStyle(event.target.value as StrokeStyle)}><option value="solid">Heldragen</option><option value="dash">Sträckad</option><option value="dot">Punktad</option><option value="dashdot">Sträck-punkt</option></select></label><button className={activeTool === 'Edit' ? 'active' : ''} onClick={() => chooseTool('Edit', () => editor?.edit())}>✎ Redigera</button><button className={activeTool === 'Drag' ? 'active' : ''} onClick={() => chooseTool('Drag', () => editor?.drag())}>✥ Flytta</button><button className={activeTool === 'Remove' ? 'active' : ''} onClick={() => chooseTool('Remove', () => editor?.remove())}>⌫ Ta bort</button><button disabled={!editor?.canUndo()} onClick={() => editor?.undo()}>↶ Ångra</button><button disabled={!editor?.canRedo()} onClick={() => editor?.redo()}>↷ Gör om</button></div></div>
     </div>
   </main>;
 }
@@ -577,7 +637,7 @@ function AdminAuthView({ onAuthenticated, onBack }: { onAuthenticated: (identity
     const response = await fetch(`${API}/auth/admin/${registerMode ? 'register' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
     if (!response.ok) { setError((await response.text()) || 'Autentiseringen misslyckades.'); return; }
     if (registerMode) { setRegisterMode(false); setError('Kontot skapades. Logga in för att fortsätta.'); return; }
-    onAuthenticated(await response.json());
+    onAuthenticated(normalizeAdminIdentity(await response.json()) ?? { id: '', userName: username, roles: [] });
   };
   return <main className="selection-screen"><section className="investigation-picker auth-panel"><button className="selection-back" onClick={onBack}>← Till startsidan</button><h2>{registerMode ? 'Registrera Admin' : 'Logga in som Admin'}</h2><form onSubmit={event => void submit(event)}><label>Användarnamn<input value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" required /></label><label>Lösenord<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={registerMode ? 'new-password' : 'current-password'} required /></label>{error && <p className="error">{error}</p>}<button type="submit">{registerMode ? 'Registrera' : 'Logga in'}</button></form><button className="secondary-action" onClick={() => { setRegisterMode(current => !current); setError(''); }}>{registerMode ? 'Jag har redan ett konto' : 'Registrera nytt Admin-konto'}</button></section></main>;
 }
@@ -599,6 +659,7 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const [connectionCode, setConnectionCode] = useState(new URLSearchParams(window.location.search).get('code') ?? '');
   const [connectionCallsign, setConnectionCallsign] = useState('');
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [findings, setFindings] = useState<Finding[]>([]);
   const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
   const [callsign, setCallsign] = useState('');
   const [pod, setPod] = useState('');
@@ -609,6 +670,12 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   const [uploadMessage, setUploadMessage] = useState('');
   const [uploadHistory, setUploadHistory] = useState<UploadedTrack[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [findingImage, setFindingImage] = useState<File | null>(null);
+  const [findingDescription, setFindingDescription] = useState('');
+  const [findingObservedAt, setFindingObservedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [findingLatitude, setFindingLatitude] = useState('');
+  const [findingLongitude, setFindingLongitude] = useState('');
+  const [findingPositionMessage, setFindingPositionMessage] = useState('');
   useEffect(() => {
     const stored = localStorage.getItem(connectionKey);
     if (!stored) { setConnectionChecked(true); return; }
@@ -632,9 +699,26 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
   useEffect(() => {
     if (!connection) return;
     let cancelled = false;
-    void fetch(`${API}/investigations/${investigation.id}/sectors`, { headers: { Authorization: `Bearer ${connection.token}` } }).then(response => response.ok ? response.json() : []).then(data => { if (!cancelled) { setSectors(data); setSelectedSectorIds(data.map((sector: Sector) => sector.id)); } });
+    void Promise.all([fetch(`${API}/investigations/${investigation.id}/sectors`, { headers: { Authorization: `Bearer ${connection.token}` } }), fetch(`${API}/investigations/${investigation.id}/findings`, { headers: { Authorization: `Bearer ${connection.token}` } })]).then(async ([sectorResponse, findingResponse]) => { const [sectorData, findingData] = await Promise.all([sectorResponse.ok ? sectorResponse.json() : [], findingResponse.ok ? findingResponse.json() : []]); if (!cancelled) { setSectors(sectorData); setFindings(findingData); setSelectedSectorIds(sectorData.map((sector: Sector) => sector.id)); } });
     return () => { cancelled = true; };
   }, [investigation.id, connection]);
+  const useCurrentPosition = () => {
+    if (!navigator.geolocation) { setFindingPositionMessage('Enheten stöder inte hämtning av position.'); return; }
+    setFindingPositionMessage('Hämtar enhetens position…');
+    navigator.geolocation.getCurrentPosition(position => {
+      setFindingLatitude(position.coords.latitude.toFixed(7));
+      setFindingLongitude(position.coords.longitude.toFixed(7));
+      setFindingPositionMessage('Positionen hämtades från enheten.');
+    }, error => setFindingPositionMessage(error.code === error.PERMISSION_DENIED ? 'Åtkomst till position nekades.' : 'Enhetens position kunde inte hämtas.'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+  };
+  const submitFinding = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!connection || !findingImage || !findingLatitude || !findingLongitude) { setUploadMessage('Bild och position måste anges för fyndet.'); return; }
+    const form = new FormData(); form.append('image', findingImage); form.append('latitude', findingLatitude); form.append('longitude', findingLongitude); form.append('observedAt', new Date(findingObservedAt).toISOString()); if (findingDescription.trim()) form.append('description', findingDescription.trim());
+    const response = await fetch(`${API}/investigations/${investigation.id}/findings`, { method: 'POST', headers: { Authorization: `Bearer ${connection.token}` }, body: form });
+    if (!response.ok) { setUploadMessage((await response.text()) || 'Fyndet kunde inte skickas.'); return; }
+    const finding = await response.json() as Finding; setFindings(current => [finding, ...current]); setFindingImage(null); setFindingDescription(''); setUploadMessage('Fyndet skickades.');
+  };
   useEffect(() => {
     if (!connection?.callsign) { setUploadHistory([]); return; }
     let cancelled = false;
@@ -678,7 +762,20 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
     const response = await fetch(format.sectors(API, investigation.id, exportSelection), { headers: { Authorization: `Bearer ${connection.token}` } });
     if (!response.ok) { setUploadMessage('Exporten kunde inte hämtas.'); return; }
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-${format.label.replaceAll(' ', '-').toLowerCase()}.gpx`; link.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-sektorer-${format.label.replaceAll(' ', '-').toLowerCase()}`; link.click(); URL.revokeObjectURL(url);
+  };
+  const downloadTrackExport = async (format: ExportFormat) => {
+    if (!connection || selectedSectorIds.length === 0) return;
+    const response = await fetch(format.tracks(API, investigation.id, exportSelection), { headers: { Authorization: `Bearer ${connection.token}` } });
+    if (!response.ok) { setUploadMessage('Spårexporten kunde inte hämtas.'); return; }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-spår-${format.label.replaceAll(' ', '-').toLowerCase()}`; link.click(); URL.revokeObjectURL(url);
+  };
+  const downloadFindingExport = async (format: ExportFormat) => {
+    if (!connection || selectedSectorIds.length === 0) return;
+    const response = await fetch(format.findings(API, investigation.id, exportSelection), { headers: { Authorization: `Bearer ${connection.token}` } });
+    if (!response.ok) { setUploadMessage('Fyndexporten kunde inte hämtas.'); return; }
+    const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `${investigation.name}-fynd-${format.label.replaceAll(' ', '-').toLowerCase()}`; link.click(); URL.revokeObjectURL(url);
   };
   if (!connectionChecked) return <main className="user-shell"><section className="user-panel"><p>Laddar anslutning…</p></section></main>;
   if (!connection) return <UserConnectView investigation={investigation} code={connectionCode} callsign={connectionCallsign} error={connectionError} onCodeChange={setConnectionCode} onCallsignChange={setConnectionCallsign} onSubmit={connect} onBack={onBack} />;
@@ -688,9 +785,11 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
       <button className="back-button" onClick={onBack}>← Byt sökinsats</button><button type="button" className="secondary-action" onClick={disconnect}>Koppla från insats</button>
       <h2>{investigation.name}</h2>
       <p className="muted">{investigation.description || 'Planerade och aktiva sektorer för extern GPS-användning.'}</p>
-      <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={format.label} href="#" onClick={event => { event.preventDefault(); void downloadSectorExport(format); }}>{format.label}</a>)}</div>{sectors.length > 0 && <p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p>}</section>
+      <section className="user-section"><div className="user-section-heading"><h3>Sektorer</h3>{sectors.length > 0 && <button type="button" onClick={toggleAllSectors}>{allSectorsSelected ? 'Välj inga' : 'Välj alla'}</button>}</div>{sectors.length === 0 ? <p className="muted">Inga sektorer i sökinsatsen.</p> : <ul className="user-sector-list">{sectors.map(sector => <li key={sector.id}><label><input type="checkbox" checked={selectedSectorIds.includes(sector.id)} onChange={() => toggleSector(sector.id)} /><span>{sector.name || 'Namnlös sektor'}</span></label><small>{investigationStatusLabel(sector.status)}</small></li>)}</ul>}<p className="muted selection-count">{selectedSectorIds.length} av {sectors.length} sektorer valda.</p><div className="user-export-group"><strong>Hämta valda sektorer</strong><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`sector-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadSectorExport(format); }}>{format.label}</a>)}</div></div><div className="user-export-group"><strong>Hämta spår som intersectar valda sektorer</strong><p className="muted">Hela spåret hämtas även om det fortsätter utanför sektorerna.</p><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`track-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadTrackExport(format); }}>{format.label}</a>)}</div></div></section>
       <section className="user-section"><h3>Ladda upp spår från extern GPS</h3><label>Anropsnamn<input value={callsign} onChange={event => setCallsign(event.target.value)} placeholder="Exempel: Alfa 1" required /></label><label>POD (%)<input type="number" min="0" max="100" step="0.1" value={pod} onChange={event => setPod(event.target.value)} placeholder="Inte angivet" /></label><label>Patrull/grupp<input value={assignedGroup} onChange={event => setAssignedGroup(event.target.value)} placeholder="Exempel: Alfa 1" /></label><label>Sektor<select value={sectorId} onChange={event => setSectorId(event.target.value)}><option value="">Ingen sektor vald</option>{sectors.map(sector => <option key={sector.id} value={sector.id}>{sector.name}</option>)}</select></label><label>Anteckning<textarea value={notes} onChange={event => setNotes(event.target.value)} rows={3} /></label><input id="user-track-upload" className="file-input" type="file" accept=".gpx,application/gpx+xml" multiple onChange={event => void uploadTracks(event)} /><label className="file-button" htmlFor="user-track-upload">{uploading ? 'Laddar upp…' : 'Välj spårfiler'}</label>{uploadMessage && <p className="upload-message">{uploadMessage}</p>}{uploadItems.length > 0 && <ul className="upload-status-list">{uploadItems.map(item => <li key={item.id}><span>{item.file.name}</span><small className={`upload-status-${item.status}`}>{item.message || (item.status === 'uploading' ? 'Laddar upp…' : 'Väntar…')}</small>{item.status === 'error' && <button type="button" onClick={() => void uploadOne(item)}>Försök igen</button>}</li>)}</ul>}</section>
       <section className="user-section"><h3>Mina uppladdningar</h3>{uploadHistory.length === 0 ? <p className="muted">Inga uppladdningar hittades för anropsnamnet.</p> : <ul className="upload-history-list">{uploadHistory.map(track => <li key={track.id}><strong>{track.sourceFile || 'GPX-spår'}</strong><span>{track.assignedGroup || 'Ingen grupp'} · {track.pod === null || track.pod === undefined ? 'POD ej angiven' : `POD ${track.pod}%`}</span>{track.notes && <small>{track.notes}</small>}</li>)}</ul>}</section>
+      <section className="user-section"><h3>Skicka in fynd</h3><form onSubmit={event => void submitFinding(event)}><label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => setFindingImage(event.target.files?.[0] ?? null)} required /></label><div className="finding-position"><label>Latitud<input type="number" step="any" value={findingLatitude} onChange={event => setFindingLatitude(event.target.value)} required /></label><label>Longitud<input type="number" step="any" value={findingLongitude} onChange={event => setFindingLongitude(event.target.value)} required /></label><button type="button" onClick={useCurrentPosition}>Här</button><p className="finding-position-message">{findingPositionMessage}</p></div><label>Tidpunkt<input type="datetime-local" value={findingObservedAt} onChange={event => setFindingObservedAt(event.target.value)} required /></label><label>Beskrivning<textarea value={findingDescription} onChange={event => setFindingDescription(event.target.value)} rows={3} /></label><button type="submit">Skicka fynd</button></form></section>
+      <section className="user-section"><h3>Fynd i valda sektorer</h3><div className="user-export-links">{exportFormats.map(format => <a className={selectedSectorIds.length === 0 ? 'disabled-link' : ''} aria-disabled={selectedSectorIds.length === 0} key={`finding-${format.label}`} href="#" onClick={event => { event.preventDefault(); void downloadFindingExport(format); }}>{format.label}</a>)}</div></section>
       <p className="muted user-scope-note">Användarläget visar endast planerade och aktiva insatser. QR-/kodanslutning införs i nästa steg.</p>
     </section>
   </main>;
@@ -699,18 +798,22 @@ function UserInvestigationView({ investigation, onBack }: { investigation: Inves
 type ExportPanelProps = {
   sectors: Sector[];
   tracks: Track[];
-  selection: { sectorIds: string[]; trackIds: string[]; from: string; to: string };
+  findings: Finding[];
+  selection: { sectorIds: string[]; trackIds: string[]; findingIds: string[]; from: string; to: string };
   onSectorIdsChange: (ids: string[]) => void;
   onTrackIdsChange: (ids: string[]) => void;
+  onFindingIdsChange: (ids: string[]) => void;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
   getSectorUrl: (format: ExportFormat) => string;
   getTrackUrl: (format: ExportFormat) => string;
+  getFindingUrl: (format: ExportFormat) => string;
 };
 
-function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIdsChange, onFromChange, onToChange, getSectorUrl, getTrackUrl }: ExportPanelProps) {
+function ExportPanel({ sectors, tracks, findings, selection, onSectorIdsChange, onTrackIdsChange, onFindingIdsChange, onFromChange, onToChange, getSectorUrl, getTrackUrl, getFindingUrl }: ExportPanelProps) {
   const allSectorIds = sectors.map(sector => sector.id);
   const allTrackIds = tracks.map(track => track.id);
+  const allFindingIds = findings.map(finding => finding.id);
   const toggle = (id: string, checked: boolean, selectedIds: string[], allIds: string[], onChange: (ids: string[]) => void) => {
     if (checked) {
       if (selectedIds.length > 0 && !selectedIds.includes(id)) onChange([...selectedIds, id]);
@@ -727,9 +830,12 @@ function ExportPanel({ sectors, tracks, selection, onSectorIdsChange, onTrackIds
       <fieldset><legend>Spår</legend>
         {tracks.length === 0 ? <span className="muted">Inga spår.</span> : tracks.map(track => <label key={track.id} className="export-checkbox"><input type="checkbox" checked={selection.trackIds.length === 0 || selection.trackIds.includes(track.id)} onChange={event => toggle(track.id, event.target.checked, selection.trackIds, allTrackIds, onTrackIdsChange)} /> {track.sourceFile ?? track.callsign ?? 'GPX-import'}</label>)}
       </fieldset>
+      <fieldset><legend>Fynd</legend>
+        {findings.length === 0 ? <span className="muted">Inga fynd.</span> : findings.map(finding => <label key={finding.id} className="export-checkbox"><input type="checkbox" checked={selection.findingIds.length === 0 || selection.findingIds.includes(finding.id)} onChange={event => toggle(finding.id, event.target.checked, selection.findingIds, allFindingIds, onFindingIdsChange)} /> {finding.submittedBy} · {formatDateTime(finding.observedAt)}</label>)}
+      </fieldset>
       <fieldset><legend>Tidsintervall för spår</legend><div className="export-period"><label>Från<input type="datetime-local" value={selection.from} onChange={event => onFromChange(event.target.value)} /></label><label>Till<input type="datetime-local" value={selection.to} onChange={event => onToChange(event.target.value)} /></label></div><span className="muted">Spår utan tidsstämplar tas inte med när intervall anges.</span></fieldset>
     </div>
-    <div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={getSectorUrl(format)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={getTrackUrl(format)}>{format.label}</a>)}</div>
+    <div className="export-links"><strong>Sektorer</strong>{exportFormats.map(format => <a key={`sector-${format.label}`} href={getSectorUrl(format)}>{format.label}</a>)}<strong>Spår</strong>{exportFormats.map(format => <a key={`track-${format.label}`} href={getTrackUrl(format)}>{format.label}</a>)}<strong>Fynd</strong>{exportFormats.map(format => <a key={`finding-${format.label}`} href={getFindingUrl(format)}>{format.label}</a>)}</div>
   </details>;
 }
 
@@ -792,6 +898,11 @@ function ReferencePointPlacement({ enabled, onPlace }: { enabled: boolean; onPla
   return null;
 }
 
+function FindingPlacement({ enabled }: { enabled: boolean }) {
+  useMapEvents({ click: event => { if (enabled) { window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { latitude: event.latlng.lat, longitude: event.latlng.lng } })); } } });
+  return null;
+}
+
 function ReferencePointLayers({ referencePoints }: { referencePoints: ReferencePoint[] }) {
   const map = useMap();
   useEffect(() => {
@@ -806,6 +917,14 @@ function ReferencePointLayers({ referencePoints }: { referencePoints: ReferenceP
     return () => { layers.forEach(layer => layer.remove()); };
   }, [map, referencePoints]);
   return null;
+}
+
+function FindingLayers({ findings }: { findings: Finding[] }) {
+  return <>{findings.map(finding => <CircleMarker key={finding.id} center={[finding.latitude, finding.longitude]} radius={8} pathOptions={{ color: '#dc2626', fillColor: '#f87171', fillOpacity: 0.9 }}><Popup><strong>Fynd</strong><br />{finding.submittedBy}<br />{formatDateTime(finding.observedAt)}{finding.description && <><br />{finding.description}</>}</Popup></CircleMarker>)}</>;
+}
+
+function FindingList({ findings, imageFiles, selectedFindingId, expandedFindingId, onToggleExpanded, onImageChange, onChange, onSave, onDelete }: { findings: Finding[]; imageFiles: Record<string, File | null>; selectedFindingId: string | null; expandedFindingId: string | null; onToggleExpanded: (id: string) => void; onImageChange: (id: string, file: File | null) => void; onChange: (id: string, patch: Partial<Finding>) => void; onSave: (finding: Finding) => void; onDelete: (finding: Finding) => void }) {
+  return <details className="sidebar-section collapsible-sidebar-section"><summary>Fynd ({findings.length})</summary><div className="collapsible-sidebar-content">{findings.length === 0 ? <p className="muted">Inga fynd inskickade.</p> : findings.map(finding => { const expanded = expandedFindingId === finding.id; return <article className={`finding-card ${selectedFindingId === finding.id ? 'selected' : ''}`} key={finding.id}><button type="button" className="finding-card-header" onClick={() => onToggleExpanded(finding.id)}><span><strong>{finding.name || 'Namnlöst fynd'}</strong><small>{finding.submittedBy} · {finding.id.startsWith('draft-') ? 'Nytt fynd' : formatDateTime(finding.submittedAt)}</small></span><span aria-hidden="true">{expanded ? '▴' : '▾'}</span></button>{expanded && <div className="finding-card-body" onClick={event => event.stopPropagation()}>{finding.imageUrl && <img className="finding-image" src={`${API.replace(/\/api\/v1$/, '')}${finding.imageUrl}`} alt="Bild för fyndet" />}{imageFiles[finding.id] && <small>{imageFiles[finding.id]?.name}</small>}<label>Namn<input value={finding.name ?? ''} onChange={event => onChange(finding.id, { name: event.target.value })} /></label><label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => onImageChange(finding.id, event.target.files?.[0] ?? null)} /></label><label>Latitud<input type="number" step="any" value={finding.latitude} onChange={event => onChange(finding.id, { latitude: Number(event.target.value) })} /></label><label>Longitud<input type="number" step="any" value={finding.longitude} onChange={event => onChange(finding.id, { longitude: Number(event.target.value) })} /></label><label>Tidpunkt<input type="datetime-local" value={finding.observedAt.slice(0, 16)} onChange={event => onChange(finding.id, { observedAt: new Date(event.target.value).toISOString() })} /></label><label>Beskrivning<textarea rows={3} value={finding.description ?? ''} onChange={event => onChange(finding.id, { description: event.target.value })} /></label><div className="finding-card-actions"><button type="button" onClick={() => onSave(finding)}>Spara fynd</button><button type="button" className="danger-button" onClick={() => onDelete(finding)}>Radera fynd</button></div></div>}</article>; })}</div></details>;
 }
 
 function TrackLayers({ tracks, visibleTracks, selectedTrackId, onTrackSelect }: { tracks: Track[]; visibleTracks: Record<string, boolean>; selectedTrackId: string | null; onTrackSelect: (trackId: string) => void }) {
@@ -837,7 +956,7 @@ function limitTrackCoordinates(coordinates: number[][], maximum = 5000): number[
   return Array.from({ length: maximum }, (_, index) => coordinates[Math.round(index * step)]);
 }
 
-function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorName, activeTool, onToolChange, selectedSectorId, hiddenSectorIds, onSectorSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; sectors: Sector[]; nextSectorName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedSectorId: string | null; hiddenSectorIds: Record<string, boolean>; onSectorSelect: (sectorId: string) => void; onReady: (api: EditorApi) => void }) {
+function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorName, activeTool, onToolChange, selectedSectorId, hiddenSectorIds, onSectorSelect, selectedFindingId, onFindingSelect, onReady }: { investigationId: string; color: string; strokeStyle: StrokeStyle; sectors: Sector[]; nextSectorName: () => string; activeTool: ActiveTool; onToolChange: (tool: ActiveTool) => void; selectedSectorId: string | null; hiddenSectorIds: Record<string, boolean>; onSectorSelect: (sectorId: string) => void; selectedFindingId: string | null; onFindingSelect: (findingId: string) => void; onReady: (api: EditorApi) => void }) {
   const map = useMap();
   const persistedSectorKey = JSON.stringify(sectors.filter(sector => !sector.id.startsWith('draft-')));
   const history = useRef<DrawingSnapshot[][]>([[]]);
@@ -857,14 +976,49 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
   const mergeFirst = useRef<any | null>(null);
   const [textMode, setTextMode] = useState(false);
   const [referencePointMode, setReferencePointMode] = useState<ReferencePoint['type'] | null>(null);
+  const [findingMode, setFindingMode] = useState(false);
   const [referencePoints, setReferencePoints] = useState<ReferencePoint[]>([]);
+  const [mapFindings, setMapFindings] = useState<Finding[]>([]);
+  const findingLayers = useRef<Record<string, L.Marker>>({});
   const [toolbarTarget, setToolbarTarget] = useState<HTMLElement | null>(null);
+  useMapEvents({ click: event => { if (findingMode) { const draftId = `draft-map-finding-${Date.now()}`; const now = new Date().toISOString(); setMapFindings(current => [{ id: draftId, submittedBy: 'Admin', description: '', observedAt: now, submittedAt: now, imageUrl: null, longitude: event.latlng.lng, latitude: event.latlng.lat }, ...current]); window.dispatchEvent(new CustomEvent('efp:finding-placed', { detail: { draftId, latitude: event.latlng.lat, longitude: event.latlng.lng } })); setFindingMode(false); onToolChange('none'); } } });
   const settings = useRef({ color, strokeStyle });
   const nextSectorNameRef = useRef(nextSectorName);
   settings.current = { color, strokeStyle };
   nextSectorNameRef.current = nextSectorName;
   useEffect(() => { setToolbarTarget(document.querySelector<HTMLElement>('.map-toolbar')); }, []);
   useEffect(() => { void fetch(`${API}/investigations/${investigationId}/reference-points`).then(response => response.ok ? response.json() : []).then(setReferencePoints); }, [investigationId]);
+  useEffect(() => { void fetch(`${API}/investigations/${investigationId}/findings`).then(response => response.ok ? response.json() : []).then(setMapFindings); }, [investigationId]);
+  useEffect(() => {
+    const group = L.layerGroup().addTo(map);
+    findingLayers.current = {};
+    mapFindings.forEach(finding => {
+      const findingLabel = finding.name || `Fynd från ${finding.submittedBy}`;
+      const marker = L.marker([finding.latitude, finding.longitude], { title: findingLabel, icon: L.divIcon({ className: `efp-finding-marker ${finding.id === selectedFindingId ? 'selected' : ''}`, html: '<span aria-hidden="true">●</span>', iconSize: [28, 36], iconAnchor: [14, 34] }) }).bindTooltip(`${escapeHtml(findingLabel)}<br>Inskickat av ${escapeHtml(finding.submittedBy)}<br>${formatDateTime(finding.observedAt)}`).addTo(group);
+      marker.on('click', () => onFindingSelect(finding.id));
+      findingLayers.current[finding.id] = marker;
+    });
+    return () => { group.remove(); findingLayers.current = {}; };
+  }, [map, mapFindings, selectedFindingId, onFindingSelect]);
+  useEffect(() => {
+    if (!selectedFindingId) return;
+    const marker = findingLayers.current[selectedFindingId];
+    if (marker) map.panTo(marker.getLatLng(), { animate: true });
+  }, [map, selectedFindingId]);
+  useEffect(() => {
+    const onSaved = (event: Event) => {
+      const detail = (event as CustomEvent<{ draftId: string; finding: Finding }>).detail;
+      if (!detail) return;
+      setMapFindings(current => current.map(item => item.id === detail.draftId ? detail.finding : item));
+    };
+    const onDeleted = (event: Event) => {
+      const id = (event as CustomEvent<string>).detail;
+      if (id) setMapFindings(current => current.filter(item => item.id !== id));
+    };
+    window.addEventListener('efp:finding-saved', onSaved);
+    window.addEventListener('efp:finding-deleted', onDeleted);
+    return () => { window.removeEventListener('efp:finding-saved', onSaved); window.removeEventListener('efp:finding-deleted', onDeleted); };
+  }, []);
   const geomanMap = map as L.Map & { pm?: any };
   const getLayers = () => geomanMap.pm?.getGeomanLayers?.() ?? [];
   const isSectorLayer = (layer: any) => Boolean(layer.__sectorId || layer.__sector);
@@ -1188,10 +1342,10 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     setReferencePoints(current => [...current, created]);
     setReferencePointMode(null);
   };
-  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
+  const stop = () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; splitTarget.current?.setStyle?.({ color: '#dc2626', weight: 4 }); mergeFirst.current?.setStyle?.({ color: '#dc2626', weight: 4 }); splitTarget.current = null; mergeFirst.current = null; setTextMode(false); setReferencePointMode(null); setFindingMode(false); geomanMap.pm?.disableDraw?.(); geomanMap.pm?.disableGlobalEditMode?.(); geomanMap.pm?.disableGlobalDragMode?.(); geomanMap.pm?.disableGlobalRemovalMode?.(); editingLayer.current?.pm?.disable?.(); editingLayer.current = null; };
   const api: EditorApi = {
     draw: mode => { stop(); drawingMode.current = true; geomanMap.pm?.enableDraw?.(mode, { pathOptions: { color: settings.current.color, weight: 4, dashArray: strokeMap[settings.current.strokeStyle], fillColor: settings.current.color, fillOpacity: 0.15 } }); },
-    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
+    text: () => { stop(); setTextMode(true); }, edit: () => { stop(); editSelectionMode.current = true; }, drag: () => { stop(); geomanMap.pm?.enableGlobalDragMode?.(); }, remove: () => { stop(); textRemovalMode.current = true; geomanMap.pm?.enableGlobalRemovalMode?.(); }, removeSector, getInvalidSectorIds, split: () => { stop(); splitSelectionMode.current = true; }, merge: () => { stop(); mergeSelectionMode.current = true; }, placeReferencePoint: type => { stop(); setReferencePointMode(type); }, placeFinding: () => { drawingMode.current = false; textRemovalMode.current = false; editSelectionMode.current = false; splitSelectionMode.current = false; mergeSelectionMode.current = false; setTextMode(false); setReferencePointMode(null); setFindingMode(true); }, stop, undo, redo, save: saveChanges, discard: discardChanges, updateSectorDetails, simplifySector, latestPolygon, canUndo: () => historyIndex.current > 0, canRedo: () => historyIndex.current < history.current.length - 1
   };
   const createSectorLayer = (sector: Sector) => sector.geometry.type === 'LineString'
     ? L.polyline(toLatLngs(sector.geometry.coordinates), { color: '#dc2626', weight: 4 })
@@ -1284,7 +1438,7 @@ function MapEditor({ investigationId, color, strokeStyle, sectors, nextSectorNam
     );
     return () => { active = false; };
   }, [map, sectors.length]);
-  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) void saveReferencePoint(referencePointMode, lat, lng); }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en sektor och rita sedan en fri linje från kant till kant" aria-label="Dela sektor: välj en sektor och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela sektor</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två sektorer som delar en gemensam kant" aria-label="Slå ihop sektorer: välj två angränsande sektorer" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop sektorer</button><button className={referencePointMode === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={referencePointMode === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={referencePointMode === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('none'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)}</>;
+  return <><TextPlacement enabled={textMode} onPlace={(lat, lng) => { setTextMode(false); onToolChange('none'); const text = window.prompt('Text på kartan', '')?.trim(); if (text) addTextLayer(text, lat, lng); }} /><ReferencePointPlacement enabled={referencePointMode !== null} onPlace={(lat, lng) => { if (referencePointMode) { void saveReferencePoint(referencePointMode, lat, lng); onToolChange('none'); } }} /> <ReferencePointLayers referencePoints={referencePoints} />{toolbarTarget && createPortal(<><button className={activeTool === 'Split' ? 'active' : ''} title="Välj en sektor och rita sedan en fri linje från kant till kant" aria-label="Dela sektor: välj en sektor och rita sedan en fri linje" onClick={() => { onToolChange('Split'); api.split(); }}>✂ Dela sektor</button><button className={activeTool === 'Merge' ? 'active' : ''} title="Välj två sektorer som delar en gemensam kant" aria-label="Slå ihop sektorer: välj två angränsande sektorer" onClick={() => { onToolChange('Merge'); api.merge(); }}>⇄ Slå ihop sektorer</button><button className={activeTool === 'Finding' ? 'active' : ''} aria-label="Placera fynd på kartan" onClick={() => { onToolChange('Finding'); api.placeFinding(); }}>📍 Fynd</button><button className={activeTool === 'Pls' ? 'active' : ''} onClick={() => { onToolChange('Pls'); api.placeReferencePoint('Pls'); }}>📍 PLS</button><button className={activeTool === 'Lkp' ? 'active' : ''} onClick={() => { onToolChange('Lkp'); api.placeReferencePoint('Lkp'); }}>📍 LKP</button><button className={activeTool === 'Ipp' ? 'active' : ''} onClick={() => { onToolChange('Ipp'); api.placeReferencePoint('Ipp'); }}>📍 IPP</button></>, toolbarTarget)};</>;
 }
 
 function TextPlacement({ enabled, onPlace }: { enabled: boolean; onPlace: (lat: number, lng: number) => void }) { useMapEvents({ click: event => { if (enabled) onPlace(event.latlng.lat, event.latlng.lng); } }); return null; }
