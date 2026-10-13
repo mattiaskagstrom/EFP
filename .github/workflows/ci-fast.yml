@@ -30,6 +30,8 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Backend unit tests
         run: dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --no-restore --collect:"XPlat Code Coverage"
+      - name: Development startup regression tests
+        run: pwsh -NoProfile -File scripts/dev-runtime.tests.ps1
       - name: Backend contract tests
         run: dotnet test tests/Api.ContractTests/Api.ContractTests.csproj --no-restore --collect:"XPlat Code Coverage"
       - name: Frontend build and unit tests

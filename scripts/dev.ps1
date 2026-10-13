@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$KeepDatabase,
     [switch]$SkipDependencyRestore,
@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'dev-runtime.ps1')
 $script:StartedProcesses = @()
 $script:StartedDatabase = $false
 
@@ -46,7 +47,8 @@ function Stop-StartedProcesses {
     foreach ($process in $script:StartedProcesses) {
         if ($process -and -not $process.HasExited) {
             Write-Host "Stoppar $($process.ProcessName) (PID $($process.Id))..." -ForegroundColor DarkGray
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            # Stop the process tree, including Vite started by the .cmd wrapper.
+            & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
         }
     }
 }
@@ -134,17 +136,15 @@ try {
     $script:StartedDatabase = -not $existingDbRunning
 
     Write-Step 'Väntar på frisk databas'
-    $databaseReady = $false
-    for ($attempt = 1; $attempt -le 30; $attempt++) {
+    $databaseReady = Wait-DevelopmentDatabase -GetHealth {
         $dbId = ((& docker compose -f $composeFile ps -q db | Out-String).Trim())
         if ($dbId) {
             $health = (& docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $dbId).Trim()
             Write-Host "Databasstatus: $health"
-            if ($health -eq 'healthy' -or $health -eq 'running') { $databaseReady = $true; break }
+            return $health
         }
-        Start-Sleep -Seconds 2
     }
-    if (-not $databaseReady) { throw 'Databasen blev inte frisk inom 60 sekunder.' }
+    if (-not $databaseReady) { throw "Databasen är inte tillgänglig från Windows på 127.0.0.1:5432. Kontrollera Docker-portmappningen. Återskapa vid behov containern utan att radera volymen: docker compose -f `"$composeFile`" up -d --force-recreate db" }
 
     Write-Step 'Startar backend'
     $env:ConnectionStrings__Efp = 'Host=localhost;Port=5432;Database=efp;Username=efp;Password=efp-dev-password'
@@ -152,6 +152,8 @@ try {
     $apiLog = Join-Path $logDirectory 'api.log'
     $apiErrorLog = Join-Path $logDirectory 'api.error.log'
     $apiProcess = Start-Process -FilePath 'dotnet' -ArgumentList @('run', '--project', $apiProject, '--no-restore', '--no-launch-profile') -WorkingDirectory $repoRoot -RedirectStandardOutput $apiLog -RedirectStandardError $apiErrorLog -PassThru -NoNewWindow
+    # Windows PowerShell 5.1 needs the process handle retained to read ExitCode.
+    $null = $apiProcess.Handle
     $script:StartedProcesses += $apiProcess
 
     Write-Step 'Startar React-admin'
@@ -167,6 +169,7 @@ try {
     # behöver däremot den körbara .cmd-wrappern för att kunna starta processen.
     $packageManagerProcessPath = Get-ProcessCommandPath $script:PackageManager
     $adminProcess = Start-Process -FilePath $packageManagerProcessPath -ArgumentList $adminArguments -WorkingDirectory $repoRoot -RedirectStandardOutput $adminLog -RedirectStandardError $adminErrorLog -PassThru -NoNewWindow
+    $null = $adminProcess.Handle
     $script:StartedProcesses += $adminProcess
 
     Write-Host "`nUtvecklingsmiljön är startad:" -ForegroundColor Green
@@ -178,8 +181,8 @@ try {
     Write-Host 'Tryck Ctrl+C för att stoppa backend, frontend och databasen.'
 
     while ($true) {
-        if ($apiProcess.HasExited) { throw "Backend avslutades oväntat med exit code $($apiProcess.ExitCode). Se $apiErrorLog" }
-        if ($adminProcess.HasExited) { throw "Admin-interface avslutades oväntat med exit code $($adminProcess.ExitCode). Se $adminErrorLog" }
+        if ($apiProcess.HasExited) { throw "Backend avslutades oväntat med exit code $(Get-ExitedProcessCode $apiProcess). Se $apiErrorLog" }
+        if ($adminProcess.HasExited) { throw "Admin-interface avslutades oväntat med exit code $(Get-ExitedProcessCode $adminProcess). Se $adminErrorLog" }
         Start-Sleep -Seconds 2
     }
 }

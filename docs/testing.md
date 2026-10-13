@@ -46,6 +46,8 @@ Att ta bort routes eller metoder från `/api/v1` ska stoppa CI. Medvetna breakin
 
 ## GitHub Actions
 
+`pwsh -NoProfile -File scripts/dev-runtime.tests.ps1` testar att utvecklingsstarten kräver både frisk Docker-databas och anslutning från värddatorn, väntar på portmappningen och visar en exitkod även när Windows inte lämnar någon. Skriptet kontrollerar också UTF-8 BOM för svenska meddelanden i Windows PowerShell 5.1.
+
 `pnpm test:docker-build` kontrollerar att Docker-bygget får alla workspace-manifest före den låsta installationen, använder samma pnpm-version som CI och inte kopierar in lokala `node_modules` eller byggresultat. Testet körs före Compose-bygget i båda CI-sviterna.
 
 `ci-fast.yml` körs på Pull Requests och push till `main` eller `master`. Den kör backendtester, API-kontrakt, frontendtester, build, OpenAPI-diff samt smoke- och kritiska E2E-tester.
