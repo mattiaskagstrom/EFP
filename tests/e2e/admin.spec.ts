@@ -70,19 +70,42 @@ test('@critical user investigation view has a scrollable page', async ({ page })
 
 test('@full sector panel can be collapsed and searched', async ({ page }) => {
   await loginAsAdmin(page);
-  let investigation = page.locator('.investigation-list button').first();
-  if (await page.locator('.investigation-list button').count() === 0) {
-    await page.getByPlaceholder('Namn på ny sökinsats').fill(`E2E ${Date.now()}`);
-    await page.getByRole('button', { name: 'Skapa sökinsats' }).click();
-    await expect(page.getByRole('button', { name: 'Spara ändringar' })).toBeVisible();
-  } else {
-    await expect(investigation).toBeVisible();
-    await investigation.click();
-  }
+  await page.getByPlaceholder('Namn på ny sökinsats').fill(`Sector panel E2E ${Date.now()}`);
+  await page.getByRole('button', { name: 'Skapa sökinsats' }).click();
+  await expect(page.getByRole('button', { name: 'Spara ändringar' })).toBeVisible();
   await page.getByRole('button', { name: /Sektorer/ }).click();
   await expect(page.getByPlaceholder('Sök sektor-namn')).toBeHidden();
   await page.getByRole('button', { name: /Sektorer/ }).click();
   await expect(page.getByPlaceholder('Sök sektor-namn')).toBeVisible();
+});
+
+test('@critical background investigation refresh preserves collapsed panels and sector search', async ({ page }) => {
+  await loginAsAdmin(page);
+  await expect(page.getByRole('heading', { name: 'Välj sökinsats' })).toBeVisible();
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve; });
+  let listRequests = 0;
+  const refreshedName = `Refreshed E2E ${Date.now()}`;
+  await page.route('**/api/v1/investigations', async route => {
+    if (route.request().method() !== 'GET' || ++listRequests !== 2) { await route.continue(); return; }
+    const response = await route.fetch();
+    const investigations = await response.json();
+    await refreshGate;
+    await route.fulfill({ response, json: investigations.map((item: object) => ({ ...item, name: refreshedName })) });
+  });
+  await page.getByPlaceholder('Namn på ny sökinsats').fill(`Refresh E2E ${Date.now()}`);
+  await page.getByRole('button', { name: 'Skapa sökinsats' }).click();
+  await expect(page.getByRole('button', { name: 'Spara ändringar' })).toBeVisible();
+  await page.getByPlaceholder('Sök sektor-namn').fill('Norra');
+  await page.getByRole('button', { name: 'Sektorer', exact: true }).click();
+  await page.getByRole('button', { name: 'Importerade spår', exact: true }).click();
+  await expect(page.getByPlaceholder('Sök sektor-namn')).toBeHidden();
+  releaseRefresh();
+  await expect(page.getByText(refreshedName, { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder('Sök sektor-namn')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Importerade spår', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', { name: 'Sektorer', exact: true }).click();
+  await expect(page.getByPlaceholder('Sök sektor-namn')).toHaveValue('Norra');
 });
 
 test('@critical admin sector list has its own scroll area', async ({ page }) => {

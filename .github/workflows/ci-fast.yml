@@ -3,7 +3,7 @@ name: CI fast
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
           pnpm --filter efp-admin build
           pnpm --filter efp-admin test
       - name: Start application stack
-        run: docker compose up -d --build
+        run: pnpm test:docker-build && docker compose up -d --build
       - name: Wait for API
         run: |
           for i in {1..30}; do curl --fail http://localhost:8080/health && exit 0; sleep 2; done

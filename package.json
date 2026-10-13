@@ -1,9 +1,11 @@
 {
   "name": "efp",
   "private": true,
+  "packageManager": "pnpm@11.19.0",
   "scripts": {
     "test": "pnpm test:frontend && pnpm test:backend",
     "test:frontend": "pnpm --filter efp-admin test",
+    "test:docker-build": "node --test scripts/docker-build.test.mjs",
     "test:backend": "dotnet test tests/Api.UnitTests/Api.UnitTests.csproj && dotnet test tests/Api.ContractTests/Api.ContractTests.csproj",
     "test:api-contract": "dotnet test tests/Api.ContractTests/Api.ContractTests.csproj --filter FullyQualifiedName~ApiContractTests",
     "test:e2e:smoke": "playwright test --grep @smoke",

@@ -46,7 +46,9 @@ Att ta bort routes eller metoder från `/api/v1` ska stoppa CI. Medvetna breakin
 
 ## GitHub Actions
 
-`ci-fast.yml` körs på Pull Requests och push till `main`. Den kör backendtester, API-kontrakt, frontendtester, build, OpenAPI-diff samt smoke- och kritiska E2E-tester.
+`pnpm test:docker-build` kontrollerar att Docker-bygget får alla workspace-manifest före den låsta installationen, använder samma pnpm-version som CI och inte kopierar in lokala `node_modules` eller byggresultat. Testet körs före Compose-bygget i båda CI-sviterna.
+
+`ci-fast.yml` körs på Pull Requests och push till `main` eller `master`. Den kör backendtester, API-kontrakt, frontendtester, build, OpenAPI-diff samt smoke- och kritiska E2E-tester.
 
 `ci-full-e2e.yml` kan köras manuellt och körs nattligen. Den startar en ren Compose-miljö och kör den omfattande Playwright-sviten. Screenshots, trace, video, loggar och OpenAPI-resultat sparas som artifacts vid fel eller avslutad körning.
 

@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/dist
+**/bin
+**/obj
+**/TestResults
+playwright-report
+test-results
+.env
+.env.*
+.pnpm-store
+.nuget-cache
+.nuget-packages
+.dotnet-home
