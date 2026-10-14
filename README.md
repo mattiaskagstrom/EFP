@@ -2,6 +2,20 @@
 
 Krav och planeringsunderlag för en applikation som stödjer patrullsök och skallgångskedja inom Hemvärnets EFP-verksamhet.
 
+## Licens
+
+Projektets egen källkod, inklusive backend, frontend, tester och skript, licensieras under **Creative Commons Erkännande–IckeKommersiell–DelaLika 4.0 Internationell (CC BY-NC-SA 4.0)**. Licensidentifierare: `CC-BY-NC-SA-4.0`.
+
+Det innebär i korthet att du får dela och bearbeta koden under följande villkor:
+
+- **Erkännande:** ange upphovspersonerna och [källprojektet EFP](https://github.com/mattiaskagstrom/EFP), länka till licensen och ange om du har gjort ändringar.
+- **IckeKommersiell:** användningen ska vara icke-kommersiell enligt licensens villkor.
+- **DelaLika:** om du delar en bearbetad version ska den omfattas av samma eller en kompatibel licens enligt CC BY-NC-SA 4.0.
+
+Den fullständiga licenstexten finns i [LICENSE](LICENSE). Se även [Creative Commons officiella licenssammanfattning](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.sv). Sammanfattningen ovan ersätter inte licensvillkoren.
+
+Externa bibliotek, kartdata och annat material från tredje part omfattas av sina respektive licenser. Kodbidrag till EFP lämnas under CC BY-NC-SA 4.0, om inget annat uttryckligen har avtalats.
+
 ## Dokument
 
 - [Kravspecifikation](docs/kravspecifikation.md) – övergripande mål, funktionella krav och icke-funktionella krav.
@@ -37,11 +51,12 @@ Den första MVP-basen finns under `src/Api` och `src/Admin`.
 
 ### Starta backend lokalt
 
-Förutsätter .NET 9 SDK och Docker:
+Förutsätter .NET 9 SDK och Docker. Byt ut lösenordsplatshållaren mot ditt lokala databaslösenord innan du kör exemplet:
 
 ```powershell
+$env:EFP_DB_PASSWORD = '<ditt-lokala-databaslösenord>'
 docker compose up -d db
-$env:ConnectionStrings__Efp = "Host=localhost;Port=5432;Database=efp;Username=efp;Password=efp-dev-password"
+$env:ConnectionStrings__Efp = "Host=localhost;Port=5432;Database=efp;Username=efp;Password=$env:EFP_DB_PASSWORD"
 $env:ASPNETCORE_URLS = "http://localhost:8080"
 dotnet run --project src/Api
 ```
@@ -73,11 +88,11 @@ Om npm-registret använder ett företagscertifikat aktiverar skriptet automatisk
 
 ### Konfigurera Superadmin vid lokal start
 
-`dev.ps1` startar API:et som en separat process. Ange därför Superadmin-värdena i samma PowerShell-session innan skriptet körs:
+`dev.ps1` startar API:et som en separat process. Ange därför Superadmin-värdena i samma PowerShell-session innan skriptet körs. Ersätt lösenordsplatshållaren med ett eget unikt lösenord:
 
 ```powershell
 $env:Superadmin__Username = 'superadmin'
-$env:Superadmin__Password = 'BytDettaLokalt9'
+$env:Superadmin__Password = '<ditt-unika-superadminlösenord>'
 .\scripts\dev.ps1
 ```
 
