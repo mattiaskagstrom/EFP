@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="../fixtures/database/*.sql" Link="Fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/Api/Efp.Api.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.7" />

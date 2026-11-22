@@ -31,15 +31,17 @@ Följande refaktoreringar följs upp med checklistorna nedan. Befintliga funktio
 
 ### R3. Ersätt schemainitieringen med EF Core-migreringar
 
-- [ ] Inför versionshanterade migreringar och modellsnapshot under `src/Api/Data/Migrations/`.
-- [ ] Ersätt `EnsureCreatedAsync()` och det långa SQL-blocket i `Program.cs` med ett dokumenterat flöde för migreringar.
-- [ ] Ta fram en övergång för befintliga databaser som skapats med `EnsureCreatedAsync()` och efterföljande SQL-justeringar. Kontrollera och anpassa deras schema innan en migrationsbaslinje registreras; befintliga data ska bevaras.
-- [ ] Dokumentera hur migreringar körs lokalt och vid driftsättning. Håll bootstrap av roller och Superadmin åtskild från schemaändringarna.
-- [ ] Verifiera både installation i tom PostgreSQL/PostGIS-databas och uppgradering av en befintlig databas med representativa data, inklusive Identity-tabeller och spatiala index.
+- [x] Inför versionshanterade migreringar och modellsnapshot under `src/Api/Data/Migrations/`.
+- [x] Ersätt `EnsureCreatedAsync()` och det långa SQL-blocket i `Program.cs` med ett dokumenterat flöde för migreringar.
+- [x] Ta fram en övergång för befintliga databaser som skapats med `EnsureCreatedAsync()` och efterföljande SQL-justeringar. Kontrollera och anpassa deras schema innan en migrationsbaslinje registreras; befintliga data ska bevaras.
+- [x] Dokumentera hur migreringar körs lokalt och vid driftsättning. Håll bootstrap av roller och Superadmin åtskild från schemaändringarna.
+- [x] Verifiera både installation i tom PostgreSQL/PostGIS-databas och uppgradering av en befintlig databas med representativa data, inklusive Identity-tabeller och spatiala index.
 
 **Bedömning:** Prioriterat. Det nuvarande SQL-blocket är redan markerat som tillfälligt i koden. Migreringar ger en spårbar schemahistorik. Eventuell nödvändig PostGIS-SQL hör hemma i en migrering.
 
 **Klart när:** Både nyinstallation och uppgradering fungerar med migreringar, data bevaras och `Program.cs` inte längre innehåller det manuella schemablocket eller använder `EnsureCreatedAsync()`.
+
+**Genomfört 2026-11-22:** `InitialSchema`, snapshot och projektlokalt EF-verktyg är tillagda. Vanlig start använder migreringar; `--migrate` kör enbart schemaändringar och `--baseline-legacy` anpassar och verifierar äldre scheman i en transaktion innan baslinjen registreras. Se [Databasmigreringar](database-migrations.md). Verifierat med 2 enhetstester och 23 API-/migrationstester, inklusive 10 nya migrationsfall för tom databas, tre legacy-varianter, bevarade data, rollback vid fel och separata kommandolägen. Modellen matchar snapshoten och idempotent SQL kan genereras. Inga befintliga utvecklings- eller driftdatabaser har ändrats; uppgraderingen har körts i isolerade testcontainrar.
 
 ### R4. Byt databastabellen `Zones` till `Sectors`
 

@@ -36,6 +36,8 @@ Fast-sviten startar en separat Compose-miljö med projektnamnet `efp-test` och t
 
 API-kontraktstesterna kör mot PostgreSQL/PostGIS i Testcontainers och verifierar routes, statuskoder, JSON-fält, enumvärden, GeoJSON, GPX och OpenAPI.
 
+Samma testprojekt innehåller `DatabaseMigrationTests`, som verifierar migrering av en tom databas, baslinjering av frysta äldre scheman, bevarade insatsdata och rollback vid ogiltiga scheman eller data. Testerna jämför kolumner, nycklar och index med första migreringen och kör i separata PostGIS-containrar. Se [Databasmigreringar](database-migrations.md) för uppgraderingskommandon.
+
 Den förväntade publika v1-strukturen finns i `tests/contracts/openapi.v1.json`. Jämför aktuell OpenAPI mot baslinjen med:
 
 ```bash
