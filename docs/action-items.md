@@ -3,6 +3,91 @@
 **Version:** 0.1  
 **Status:** Arbetsunderlag
 
+## Todo från första kodgenomgången (2026-11-22)
+
+Följande är planerade refaktoreringar. Punkterna är ännu inte genomförda. Befintliga funktioner och API-kontrakt ska bevaras under arbetet.
+
+### R1. Dela upp domänmodellerna
+
+- [ ] Ersätt `src/Api/Domain/Models.cs` med en fil per klass, exempelvis `Investigation.cs`, `Sector.cs` och `ApplicationUser.cs`.
+- [ ] Lägg även domänens enumtyper i egna namngivna filer och behåll namnrymden `Efp.Api.Domain`.
+
+**Bedömning:** Bra förslag. Modellerna representerar separata begrepp och blir enklare att hitta och granska var för sig.
+
+**Klart när:** Samlingsfilen är borttagen, varje domäntyp har en tydlig hemvist och backend bygger samt befintliga enhets- och API-kontraktstester går igenom.
+
+### R2. Byt från endpointmoduler till controllers
+
+- [ ] Flytta HTTP-endpointsen i `src/Api/Features/*Endpoints.cs` till controllers i `src/Api/Controllers/`, grupperade efter resurs eller sammanhängande ansvar.
+- [ ] Ersätt registreringarna av `MapXEndpoints()` i `Program.cs` med controllerregistrering och `MapControllers()`.
+- [ ] Bevara URL:er, HTTP-metoder, JSON-format, statuskoder, autentisering, behörighetskontroller och uppladdningsbeteende. Kontrollera särskilt skillnader i automatisk modellvalidering och JSON-konfiguration vid övergången.
+- [ ] Lägg återanvändbar verksamhetslogik i fokuserade tjänster där det behövs, så att controllers inte blir nya samlingsfiler.
+
+**Bedömning:** Rimligt förslag utifrån önskemålet om en tydligare controllerstruktur. Nuvarande Minimal API-moduler är också en giltig struktur; förekomsten av `MapXEndpoints()` är i sig inget fel. Vinsten här är ett enhetligt arbetssätt och enklare navigering för den som föredrar controllers. Bytet behöver därför inte kombineras med nya generella abstraktionslager.
+
+**Klart när:** Funktionernas HTTP-endpoints finns i controllers, de gamla endpointregistreringarna är borttagna och API-kontraktstester verifierar att klienternas beteende bevarats.
+
+### R3. Ersätt schemainitieringen med EF Core-migreringar
+
+- [ ] Inför versionshanterade migreringar och modellsnapshot under `src/Api/Data/Migrations/`.
+- [ ] Ersätt `EnsureCreatedAsync()` och det långa SQL-blocket i `Program.cs` med ett dokumenterat flöde för migreringar.
+- [ ] Ta fram en övergång för befintliga databaser som skapats med `EnsureCreatedAsync()` och efterföljande SQL-justeringar. Kontrollera och anpassa deras schema innan en migrationsbaslinje registreras; befintliga data ska bevaras.
+- [ ] Dokumentera hur migreringar körs lokalt och vid driftsättning. Håll bootstrap av roller och Superadmin åtskild från schemaändringarna.
+- [ ] Verifiera både installation i tom PostgreSQL/PostGIS-databas och uppgradering av en befintlig databas med representativa data, inklusive Identity-tabeller och spatiala index.
+
+**Bedömning:** Prioriterat. Det nuvarande SQL-blocket är redan markerat som tillfälligt i koden. Migreringar ger en spårbar schemahistorik. Eventuell nödvändig PostGIS-SQL hör hemma i en migrering.
+
+**Klart när:** Både nyinstallation och uppgradering fungerar med migreringar, data bevaras och `Program.cs` inte längre innehåller det manuella schemablocket eller använder `EnsureCreatedAsync()`.
+
+### R4. Byt databastabellen `Zones` till `Sectors`
+
+- [ ] Genomför namnbytet med en separat EF Core-migrering efter R3. Använd tabellomdöpning så att tabellen inte tas bort och återskapas.
+- [ ] Uppdatera mappningen `ToTable("Zones")` i `EfpDbContext` till `Sectors` och anpassa berörda index- och constraintnamn.
+- [ ] Uppdatera aktiva SQL-referenser, tester och dokumentation. Historiska migreringar ska behålla de namn som gällde vid respektive steg.
+- [ ] Verifiera att befintliga sektorer, geometrier, relationer och index bevaras vid uppgradering.
+
+**Bedömning:** Bra förslag. Domänmodellen, DbSet och API använder redan sektorbegreppet; databasen bör följa samma namngivning. Det faktiska nuvarande tabellnamnet är `Zones`, så föreslaget nytt namn är `Sectors` enligt databasens befintliga namnstil.
+
+**Klart när:** Både en ny och en uppgraderad databas använder `Sectors`, med bevarade data och fungerande sektorflöden.
+
+### R5. Separera frontendtester från produktionskod
+
+- [ ] Flytta `src/Admin/src/**/*.test.ts` och `*.test.tsx` till `src/Admin/tests/`, med en struktur som speglar kodens funktionsområden.
+- [ ] Flytta `testSetup.ts` till `src/Admin/tests/setup.ts` och uppdatera Vitests testurval, setup-sökväg, importer och eventuell coverage-konfiguration.
+- [ ] Säkerställ TypeScript-kontroll av testkoden med lämplig testkonfiguration och dokumentera testkommandona i `docs/testing.md`.
+- [ ] Behåll de gemensamma end-to-end-testerna i `tests/e2e/`.
+
+**Bedömning:** Rimlig preferens. Tester bredvid implementationen gör dem lätta att hitta vid ändringar, men en separat testmapp ger den tydliga uppdelning som önskas här. En speglad struktur behåller kopplingen mellan kod och tester.
+
+**Klart när:** Produktionskoden i `src/Admin/src/` är separerad från testfiler och testsetup, och befintliga frontendtester, typkontroll och produktionsbygge fungerar.
+
+### R6. Dela upp `main.tsx` efter ansvar
+
+- [ ] Begränsa `src/Admin/src/main.tsx` till appstart, globala stilimporter och montering av React-roten. Flytta appkomposition, routing och felgräns till `app/`.
+- [ ] Bryt ut vyer och komponenter för rollval, inloggning, insatslista, administration och användarens insatsvy.
+- [ ] Bryt ut kartredigeraren, kartlager, geometrihjälpare och redigeringshistorik i fokuserade moduler.
+- [ ] Flytta API-anrop till en gemensam klient och funktionsspecifika API-moduler. Samla relaterad tillstånds- och effektlogik i hooks där det förenklar komponenterna.
+- [ ] Placera typer nära respektive funktion och dela dem först när flera funktioner behöver samma kontrakt.
+- [ ] Genomför uppdelningen stegvis och verifiera befintliga flöden för inloggning, navigering, kartredigering, spara/ångra, import och export.
+
+**Bedömning:** Tydligt behov. Filen är cirka 1 550 rader och innehåller flera oberoende ansvar. Enbart en flytt till en lika stor `App.tsx` löser inte problemet; dela även upp logik och tillstånd efter ansvar.
+
+**Klart när:** Startfilen bara startar appen, vyer och kartlogik har egna moduler och befintliga tester samt relevanta end-to-end-flöden fungerar utan beteendeförändringar.
+
+### R7. Inför en tydlig mappstruktur i frontend
+
+- [ ] Använd en funktionsindelad struktur under `src/Admin/src/`: `app/`, `features/`, `shared/` och `styles/`.
+- [ ] Samla funktioner under exempelvis `features/auth/`, `features/investigations/`, `features/sectors/`, `features/tracks/`, `features/findings/`, `features/reference-points/`, `features/maps/` och `features/import-export/`.
+- [ ] Placera gemensam kartinfrastruktur i `shared/map/`, API-klienten i `shared/api/` och faktiskt återanvända UI-komponenter i `shared/ui/`. Funktionsspecifika komponenter, hooks och hjälpare stannar i sin funktion.
+- [ ] Spegla indelningen under `src/Admin/tests/` enligt R5 och dokumentera mappansvar samt beroenderiktning: appen sätter ihop funktionerna, funktionerna använder gemensam kod och gemensam kod ska inte importera funktioner.
+- [ ] Fastställ strukturen före R5–R6 och flytta befintliga filer stegvis när deras ansvar bryts ut.
+
+**Bedömning:** Bra förslag. Funktionsindelning håller relaterad kod tillsammans när appen växer. Skapa undermappar när de behövs och undvik stora generella samlingsmappar för all logik och alla typer.
+
+**Klart när:** Befintlig frontendkod följer den dokumenterade strukturen, testerna speglar den och frontendens typkontroll, tester och bygge fungerar.
+
+**Föreslagen arbetsordning:** R1 → R3 → R4 → R2 → R7 → R5 → R6. Bestäm frontendstrukturen i R7 innan testflytt och uppdelning; genomför själva kodflyttarna tillsammans med R5–R6. Håll databasändringar, controllerbyte och frontendrefaktorering i separata granskningsbara ändringar.
+
 ## Prioritering
 
 Arbetet genomförs i följande ordning:
