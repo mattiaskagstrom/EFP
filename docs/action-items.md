@@ -5,16 +5,18 @@
 
 ## Todo från första kodgenomgången (2026-11-22)
 
-Följande är planerade refaktoreringar. Punkterna är ännu inte genomförda. Befintliga funktioner och API-kontrakt ska bevaras under arbetet.
+Följande refaktoreringar följs upp med checklistorna nedan. Befintliga funktioner och API-kontrakt ska bevaras under arbetet.
 
 ### R1. Dela upp domänmodellerna
 
-- [ ] Ersätt `src/Api/Domain/Models.cs` med en fil per klass, exempelvis `Investigation.cs`, `Sector.cs` och `ApplicationUser.cs`.
-- [ ] Lägg även domänens enumtyper i egna namngivna filer och behåll namnrymden `Efp.Api.Domain`.
+- [x] Ersätt `src/Api/Domain/Models.cs` med en fil per klass, exempelvis `Investigation.cs`, `Sector.cs` och `ApplicationUser.cs`.
+- [x] Lägg även domänens enumtyper i egna namngivna filer och behåll namnrymden `Efp.Api.Domain`.
 
 **Bedömning:** Bra förslag. Modellerna representerar separata begrepp och blir enklare att hitta och granska var för sig.
 
 **Klart när:** Samlingsfilen är borttagen, varje domäntyp har en tydlig hemvist och backend bygger samt befintliga enhets- och API-kontraktstester går igenom.
+
+**Genomfört 2026-11-22:** Nio klasser och fyra enumtyper har egna filer. Samtliga typdefinitioner har jämförts mot tidigare `Models.cs` och är oförändrade. Backend bygger; 2 enhetstester och 13 API-kontraktstester mot isolerad PostgreSQL/PostGIS går igenom. Bygget rapporterar en befintlig nullable-varning (CS8602) i `Program.cs`.
 
 ### R2. Byt från endpointmoduler till controllers
 
